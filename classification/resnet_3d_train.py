@@ -46,7 +46,6 @@ class Trainer():
 
 
     def _run_epoch(self, epoch:int) -> None:
-        print('Training')
         self._model.train()
 
         torch.cuda.empty_cache()
@@ -92,7 +91,6 @@ class Trainer():
 
 
     def _validate(self, epoch_val:int) -> None:
-            print("Validation")
             self._model.eval()
 
             self._report.reset_metrics('validation')
@@ -131,7 +129,6 @@ class Trainer():
             metric = metrics_values['f1_score']
             if metric > self._best_metric:
                 self._best_metric = metric
-            print(f'Best Metric: {self._best_metric}')
 
 
     def _load_model(self, model_path:str) -> None:
@@ -158,7 +155,7 @@ class Trainer():
         torch.cuda.empty_cache()
         self._scaler = GradScaler()
         self._run_id = run_id
-
+        self._model.to(self._device)
         for epoch in range(self._last_epoch, self._last_epoch + epoch_num):
             self._run_epoch(epoch)
             if (epoch) % self._validation_interval == 0:
@@ -194,6 +191,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
     val_results_path = os.sep.join(['mri_classification', 'eval_logs', 'val_results.csv'])
     train_params_path = os.sep.join(['mri_classification', 'eval_logs', 'train_params.csv'])
     save_model_path = os.sep.join(['mri_classification', 'eval_logs', 'models']) 
+    report_root_path = os.sep.join(['mri_classification', 'eval_logs'])
     
     
     """
@@ -248,7 +246,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
     """
     Prepare report
     """
-    report  = Report(num_classes=5)
+    report  = Report(num_classes=5, root_path=report_root_path)
     training_run_table_columns = [
         'ID', 'Epoch Number', 'Loss', 
         'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
