@@ -12,11 +12,13 @@ from torcheval.metrics import (
     MulticlassAUROC
 )
 
+from torcheval.metrics.functional import multiclass_confusion_matrix
 
 class Report:
 
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, root_path):
         self._num_classes = num_classes
+        self._root_path = root_path
         self._tables = {}
         self._metrics = {}
 
@@ -138,6 +140,12 @@ class Report:
         new_line = pd.DataFrame([row_data], columns=self._tables[table_name]['table'].columns)
 
         new_line.to_csv(self._tables[table_name]['file_path'], mode='a', header=False, index=False)
+
+
+    def save_confusion_matrix(self, predicted_labels, ground_truth_labels, file_name:str):
+        file_path = os.sep.join([self._root_path, 'confusion_matrices', file_name]) 
+        conf_matrix = multiclass_confusion_matrix(predicted_labels, ground_truth_labels, self._num_classes)
+        torch.save(conf_matrix, file_path)
         
         
     

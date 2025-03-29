@@ -191,6 +191,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
     val_results_path = os.sep.join(['mri_classification', 'eval_logs', 'val_results.csv'])
     train_params_path = os.sep.join(['mri_classification', 'eval_logs', 'train_params.csv'])
     save_model_path = os.sep.join(['mri_classification', 'eval_logs', 'models']) 
+    report_root_path = os.sep.join(['mri_classification', 'eval_logs'])
     
     
     """
@@ -245,7 +246,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
     """
     Prepare report
     """
-    report  = Report(num_classes=5)
+    report  = Report(num_classes=5, root_path=report_root_path)
     training_run_table_columns = [
         'ID', 'Epoch Number', 'Loss', 
         'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'

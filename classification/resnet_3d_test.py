@@ -46,6 +46,8 @@ class Tester():
         self._report.reset_metrics('test')
         epoch_loss = 0
         step = 0
+        ground_truth_labels = torch.tensor([], dtype=torch.int64).to(self._device)
+        predicted_labels = torch.tensor([], dtype=torch.int64).to(self._device) 
         with torch.no_grad():
             for batch_data in self._test_data:
                 step += 1
@@ -57,6 +59,12 @@ class Tester():
                 self._report.update_metrics('test', 'recall', model_out_argmax, labels)
                 self._report.update_metrics('test', 'f1_score', model_out_argmax, labels)
                 self._report.update_metrics('test', 'auroc', model_out.softmax(dim=1), labels) 
+
+                # collect data for confusion matrix
+                ground_truth_labels = torch.cat((ground_truth_labels, labels))
+                predicted_labels = torch.cat((predicted_labels, model_out_argmax))
+
+
                 loss = self._loss_function(model_out, labels)
                 epoch_loss += loss.item()
         epoch_loss /= step
@@ -71,7 +79,9 @@ class Tester():
             metrics_values['test'],
             metrics_values['test']
         ])
-            
+        self._report.save_confusion_matrix(predicted_labels, ground_truth_labels, f'conf_mat_{run_id}.pt')
+
+
         # Save the best model based on f1 score
         metric = metrics_values['f1_score']
         if metric > self._best_metric:
@@ -89,7 +99,6 @@ class Tester():
 
 
 
-
        
 def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, model_path: str = None): 
     """
@@ -99,6 +108,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, model_path
     test_partition_path = os.sep.join(['mri_classification', 'data', 'test_5.json'])
     test_transformed_data_path = os.sep.join(['mri_classification', 'data', 'test_proc_5.pt'])
     test_results_path = os.sep.join(['mri_classification', 'eval_logs', 'test_results.csv'])
+    report_root_path = os.sep.join(['mri_classification', 'eval_logs'])
 
     
     """
@@ -133,7 +143,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, model_path
     """
     Prepare report
     """
-    report  = Report(num_classes=5)
+    report  = Report(num_classes=5, root_path=report_root_path)
     test_run_table_columns = [
         'ID', 'Epoch Number', 'Loss', 
         'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
@@ -158,7 +168,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, model_path
     """
     Save confusion matrix
     """
-    
+
     
 
 if __name__ == "__main__":
