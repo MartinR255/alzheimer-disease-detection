@@ -93,6 +93,8 @@ class Report:
         for metric_name, metric in self._metrics[group_name].items():
             computations[metric_name] = metric.compute().item()
 
+        return computations
+
 
     def reset_metrics(self, group_name: str):
         """
