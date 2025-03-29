@@ -1,19 +1,109 @@
 import os
-import sys
-import logging
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt  
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-from torch.utils.tensorboard import SummaryWriter
+import torch
+from torcheval.metrics import (
+    MulticlassAccuracy,
+    MulticlassPrecision,
+    MulticlassRecall,
+    MulticlassF1Score,
+    MulticlassAUROC
+)
 
 
 class Report:
 
-    def __init__(self):
+    def __init__(self, num_classes):
+        self._num_classes = num_classes
         self._tables = {}
+        self._metrics = {}
+
+
+    def _create_metrics(self):
+        """
+        Create evaluation metrics for multiclass classification.
+        
+        Args:
+            None
+            
+        Returns:
+            dict: Dictionary containing initialized metrics:
+                - 'accuracy': MulticlassAccuracy
+                - 'precision': MulticlassPrecision
+                - 'recall': MulticlassRecall
+                - 'f1_score': MulticlassF1Score
+                - 'auroc': MulticlassAUROC
+        """
+        accuracy = MulticlassAccuracy(num_classes=self._num_classes, average='macro')
+        precision = MulticlassPrecision(num_classes=self._num_classes, average='macro')
+        recall = MulticlassRecall(num_classes=self._num_classes, average='macro')
+        f1_score = MulticlassF1Score(num_classes=self._num_classes, average='macro')
+        auroc = MulticlassAUROC(num_classes=self._num_classes, average='macro')
+
+        return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1_score': f1_score, 'auroc': auroc}
+
+
+    def init_metrics(self, group_name: str):
+        """
+        Initialize metrics objects.
+        MulticlassAccuracy, MulticlassPrecision, MulticlassRecall, MulticlassF1Score, MulticlassAUROC
+        
+        Args:
+            group_names (str): Metrics group name.
+            
+        Returns:
+            None
+        """
+        self._metrics[group_name] = self._create_metrics()
+
+
+    def update_metrics(self, group_name: str, metric_name: str, predicted_value: torch.Tensor, ground_truth: torch.Tensor) -> None:
+        """
+        Update a specific metric.
+
+        Args:
+            group_name (str): The metric group name (e.g., 'train', 'validation').
+            metric_name (str): The specific metric to update ('accuracy', 'precision', 'recall', 'f1_score', 'auroc').
+            predicted_value (torch.Tensor): The predicted values from the model.
+            ground_truth (torch.Tensor): The actual ground truth values.
+
+        Returns:
+            None
+        """
+        self._metrics[group_name][metric_name].update(predicted_value, ground_truth)
+
+
+    def compute_metrics(self, group_name: str) -> dict:
+        """
+        Compute all metrics for a given metric group and return the results.
+
+        Args:
+            group_name (str): The metric group name (e.g., 'train', 'val').
+
+        Returns:
+            dict: A dictionary containing the computed values for each metric 
+            ('accuracy', 'precision', 'recall', 'f1_score', 'auroc').
+            
+        """
+        computations = {}
+        for metric_name, metric in self._metrics[group_name].items():
+            computations[metric_name] = metric.compute().item()
+
+
+    def reset_metrics(self, group_name: str):
+        """
+        Reset all metrics with specific group name to their initial state.
+        
+        Args:
+            group_name (str): Metrics group name.
+            
+        Returns:
+            None
+        """
+        for metric in self._metrics[group_name].values():
+            metric.reset()
     
 
     def create_table(self, table_name, header, file_path=None):
@@ -46,7 +136,6 @@ class Report:
             raise ValueError(f"Table '{table_name}' does not exist.")
         
         new_line = pd.DataFrame([row_data], columns=self._tables[table_name]['table'].columns)
-        # self._tables[table_name]['table'] = pd.concat([self._tables[table_name]['table'], new_line])
 
         new_line.to_csv(self._tables[table_name]['file_path'], mode='a', header=False, index=False)
         

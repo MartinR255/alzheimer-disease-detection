@@ -4,24 +4,17 @@ from datetime import datetime
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-from utils import load_data, get_dataset, create_metrics, reset_metrics
+from utils import get_memory_dataset
 
 import torch
-from report import Report
-
-import monai
-from monai.transforms import Compose  
-from monai.networks.nets import resnet18, resnet34, resnet50
-from monai.transforms import Activations, AsDiscrete
-
-from monai.data import DataLoader
-from torch.utils.data.dataset import ConcatDataset
-
-from monai.utils import set_determinism
-
 from torch.amp import GradScaler
 
-import gc
+from report import Report
+
+import monai 
+from monai.networks.nets import resnet18, resnet34, resnet50, resnet101
+from monai.data import DataLoader
+from monai.utils import set_determinism
 
 
 
@@ -32,22 +25,24 @@ class Trainer():
                 optimizer:torch.optim.Optimizer, 
                 loss_function:torch.nn.Module, 
                 train_data:DataLoader, 
-                val_data:DataLoader, 
+                validation_data:DataLoader, 
                 validation_interval:int,
                 device:torch.device,
-                save_model_path:str
+                save_model_path:str,
+                report: Report     
     ) -> None: 
         self._model = model
         self._optimizer = optimizer
         self._loss_function = loss_function
         self._train_data = train_data
-        self._val_data = val_data
+        self._validation_data = validation_data
         self._validation_interval = validation_interval
         self._device = device
         self._save_model_path = save_model_path
+        self._report = report
 
-        self._metrics = {'train': create_metrics(), 'val': create_metrics()}
-
+        self._report.init_metrics('train')
+        self._report.init_metrics('validation')
 
 
     def _run_epoch(self, epoch:int) -> None:
@@ -57,40 +52,41 @@ class Trainer():
         torch.cuda.empty_cache()
         epoch_loss = 0
         epoch_step = 0
-        reset_metrics(self._metrics['train'])
+        self._report.reset_metrics('train')
         for batch_data in self._train_data: 
             epoch_step += 1
             
             inputs, labels = batch_data[0].to(self._device), batch_data[1].to(self._device) 
             self._optimizer.zero_grad() 
             with torch.autocast(device_type=self._device.type, dtype=torch.float16):
-                outputs = self._model(inputs)
-                loss = self._loss_function(outputs, labels)
+                model_out = self._model(inputs)
+                loss = self._loss_function(model_out, labels)
             
             self._scaler.scale(loss).backward() 
             self._scaler.step(self._optimizer)
             self._scaler.update()
 
-            model_out_argmax = outputs.argmax(dim=1)
-            self._metrics['train']['accuracy'].update(model_out_argmax, labels)   
-            self._metrics['train']['precision'].update(model_out_argmax, labels)
-            self._metrics['train']['recall'].update(model_out_argmax, labels)
-            self._metrics['train']['f1_score'].update(model_out_argmax, labels)
-            self._metrics['train']['auroc'].update(outputs.softmax(dim=1), labels)
+            model_out_argmax = model_out.argmax(dim=1)
+            self._report.update_metrics('train', 'accuracy', model_out_argmax, labels)
+            self._report.update_metrics('train', 'precision', model_out_argmax, labels)
+            self._report.update_metrics('train', 'recall', model_out_argmax, labels)
+            self._report.update_metrics('train', 'f1_score', model_out_argmax, labels)
+            self._report.update_metrics('train', 'auroc', model_out.softmax(dim=1), labels)  
 
             epoch_loss += loss.item()
 
         epoch_loss /= epoch_step
 
+        metrics_values = self._report.compute_metrics('train')
         self._report.add_row('Training_Results', [
             self._run_id,
             epoch, 
             epoch_loss,
-            self._metrics['train']['accuracy'].compute().item(),
-            self._metrics['train']['precision'].compute().item(),
-            self._metrics['train']['recall'].compute().item(),
-            self._metrics['train']['f1_score'].compute().item(),
-            self._metrics['train']['auroc'].compute().item()
+            metrics_values['accuracy'],
+            metrics_values['precision'],
+            metrics_values['recall'],
+            metrics_values['f1_score'],
+            metrics_values['auroc']
         ])
 
 
@@ -99,45 +95,40 @@ class Trainer():
             print("Validation")
             self._model.eval()
 
-            reset_metrics(self._metrics['val'])
+            self._report.reset_metrics('validation')
             epoch_loss = 0
             step = 0
             with torch.no_grad():
-                for val_data in self._val_data:
+                for batch_data in self._validation_data:
                     step += 1
-                    val_images, val_labels = val_data[0].to(self._device), val_data[1].to(self._device)
-                    val_outputs = self._model(val_images)
-                    model_out_argmax = val_outputs.argmax(dim=1)
+                    inputs, labels = batch_data[0].to(self._device), batch_data[1].to(self._device)
+                    model_out = self._model(inputs)
+                    model_out_argmax = model_out.argmax(dim=1)
+                    self._report.update_metrics('validation', 'accuracy', model_out_argmax, labels)
+                    self._report.update_metrics('validation', 'precision', model_out_argmax, labels)
+                    self._report.update_metrics('validation', 'recall', model_out_argmax, labels)
+                    self._report.update_metrics('validation', 'f1_score', model_out_argmax, labels)
+                    self._report.update_metrics('validation', 'auroc', model_out.softmax(dim=1), labels) 
 
-                    self._metrics['val']['accuracy'].update(model_out_argmax, val_labels)   
-                    self._metrics['val']['precision'].update(model_out_argmax, val_labels)
-                    self._metrics['val']['recall'].update(model_out_argmax, val_labels)
-                    self._metrics['val']['f1_score'].update(model_out_argmax, val_labels)
-                    self._metrics['val']['auroc'].update(val_outputs.softmax(dim=1), val_labels)
-
-                    loss = self._loss_function(val_outputs, val_labels)
+                    loss = self._loss_function(model_out, labels)
                     epoch_loss += loss.item()
 
             epoch_loss /= step
 
-            val_metrics = self._metrics['val']
-            metric = val_metrics['f1_score'].compute().item()
-            print(f'loss: {epoch_loss}')
-            print(f'F1 Score: {metric}')
-
-            
+            metrics_values = self._report.compute_metrics('validation')
             self._report.add_row('Validation_Results', [
                 self._run_id,
                 epoch_val, 
                 epoch_loss,
-                val_metrics['accuracy'].compute().item(), 
-                val_metrics['precision'].compute().item(), 
-                val_metrics['recall'].compute().item(), 
-                metric, 
-                val_metrics['auroc'].compute().item()
+                metrics_values['accuracy'],
+                metrics_values['precision'],
+                metrics_values['recall'],
+                metrics_values['f1_score'],
+                metrics_values['auroc']
             ])
             
             # Save the best model based on f1 score
+            metric = metrics_values['f1_score']
             if metric > self._best_metric:
                 self._best_metric = metric
             print(f'Best Metric: {self._best_metric}')
@@ -157,7 +148,7 @@ class Trainer():
             self._model.load_state_dict(checkpoint)
 
 
-    def train(self, run_id:int, epoch_num:int, report:Report, model_path:str = None) -> None:
+    def train(self, run_id:int, epoch_num:int, model_path:str = None) -> None:
         self._best_metric = -1 # F1 score
         self._last_epoch = 1
 
@@ -166,7 +157,6 @@ class Trainer():
 
         torch.cuda.empty_cache()
         self._scaler = GradScaler()
-        self._report = report
         self._run_id = run_id
 
         for epoch in range(self._last_epoch, self._last_epoch + epoch_num):
@@ -193,33 +183,34 @@ class Trainer():
 
 def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num: int = 5, validation_interval: int = 1, model_path: str = None): 
     """
+    Setup paths to data
+    """
+    mri_images_path = os.sep.join(['pre_processed_mri'])
+    train_partiton_path = os.sep.join(['mri_classification', 'data', 'train_5.json'])
+    validation_partition_path = os.sep.join(['mri_classification', 'data', 'val_5.json'])
+    train_transformed_data_path = os.sep.join(['mri_classification', 'data', 'train_proc_5.pt'])
+    validation_transformed_data_path = os.sep.join(['mri_classification', 'data', 'val_proc_5.pt'])
+    train_results_path = os.sep.join(['mri_classification', 'eval_logs', 'train_results.csv'])
+    val_results_path = os.sep.join(['mri_classification', 'eval_logs', 'val_results.csv'])
+    train_params_path = os.sep.join(['mri_classification', 'eval_logs', 'train_params.csv'])
+    save_model_path = os.sep.join(['mri_classification', 'eval_logs', 'models']) 
+    
+    
+    """
     Prepare data
     """
-    dataset_path = os.sep.join(['pre_processed_mri'])
-
-    train_partiton_path = os.sep.join(['.', 'data', 'train.json'])
-    train_images, train_labels = load_data(dataset_path, train_partiton_path)
-    train_images = train_images
-    train_labels = train_labels
-
-    val_partiton_path = os.sep.join(['.', 'data', 'val.json'])
-    val_images, val_labels = load_data(dataset_path, val_partiton_path)
-    val_images = val_images
-    val_labels = val_labels
-
     set_determinism(seed=42)
-    path = os.sep.join(['.', 'data', 'train_proc.pt'])
-    train_ds = get_dataset(train_images, train_labels, path) 
-    
+
+    train_ds = get_memory_dataset(train_transformed_data_path) 
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
         num_workers=num_workers, 
-        pin_memory=False
+        pin_memory=False,
+        shuffle=True
     )
     
-    path = os.sep.join(['.', 'data', 'val_proc.pt'])
-    val_ds = get_dataset(val_images, val_labels, path)
+    val_ds = get_memory_dataset(validation_transformed_data_path)
     val_loader = DataLoader(
         val_ds,
         batch_size=batch_size,
@@ -227,29 +218,20 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
         pin_memory=False
     )
     
-    print(f'Training Data Size: {len(train_ds)}')
-    print(f'Validation Data Size: {len(val_ds)}')
-
 
     """
     Prepare model, loss function, optimizer etc.
     """
+    num_classes = 5
+    pretrained = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = resnet50(
         spatial_dims=3,
         n_input_channels=1,
-        num_classes=5,
-        pretrained=True,
-        feed_forward=False,
-        shortcut_type='B',
-        bias_downsample=False
+        num_classes=num_classes,
+        pretrained=pretrained,
     )
     
-    model = torch.nn.Sequential(
-        model,
-        torch.nn.Linear(in_features=2048, out_features=5, bias=True)
-    ).to(device)
- 
     loss_function = torch.nn.CrossEntropyLoss()
 
     learning_rate = 1e-3 # initial training range 1e-4 to 1e-3, fine-tuning range: 1e-5 to 1e-6
@@ -261,29 +243,17 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
         betas=betas, 
         weight_decay=weight_decay
     )
-    # optimizer = torch.optim.RMSprop(
-    #     params=model.parameters(),
-    #     lr=1e-2,
-    #     alpha=0.99,
-    #     momentum=0.1,
-    #     weight_decay=0 
-    # )
 
 
     """
     Prepare report
     """
+    report  = Report(num_classes=5)
     training_run_table_columns = [
         'ID', 'Epoch Number', 'Loss', 
         'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
     ]
-    save_model_path = os.sep.join(['mri_classification', 'eval_logs', 'models']) 
-
-    report  = Report()
-    train_results_path = os.sep.join(['mri_classification', 'eval_logs', 'train_results.csv'])
     report.create_table('Training_Results', training_run_table_columns, train_results_path)
-
-    val_results_path = os.sep.join(['mri_classification', 'eval_logs', 'val_results.csv'])
     report.create_table('Validation_Results', training_run_table_columns, val_results_path)
 
 
@@ -295,32 +265,30 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
         optimizer=optimizer, 
         loss_function=loss_function, 
         train_data=train_loader, 
-        val_data=val_loader, 
+        validation_data=val_loader, 
         validation_interval=validation_interval, 
         device=device,
-        save_model_path=save_model_path
+        save_model_path=save_model_path,
+        report=report
     )
-    print('Start training')
     start_train_time = datetime.now()
-    trainer.train(run_id, epoch_num, report, model_path)
+    trainer.train(run_id, epoch_num, model_path)
     end_train_time = datetime.now()
 
     
     """
     Save data about traning
     """
-    train_params_path = os.sep.join(['.', 'eval_logs', 'train_params.csv'])
-
     report.create_table('Training_parameters', [
         'ID', 'Epoch Number', 'Training Data Size', 'Validation Data Size', 
-        'Batch Size', 'Network Type', 'Optimizer', 'Learning Rate', 'Betas', 
+        'Batch Size', 'Num Classes', 'Network Type', 'Pretrained', 'Optimizer', 'Learning Rate', 'Betas', 
         'Weight Decay', 'Loss Function', 'Validation Interval', 'Training Duration (seconds)'
     ], train_params_path)
 
     training_duration = end_train_time - start_train_time 
     report.add_row('Training_parameters', [
-        run_id, epoch_num, len(train_ds), len(val_ds), batch_size, 
-        'resnet50', 'RMSprop', learning_rate, betas, weight_decay, 'CrossEntropyLoss', 
+        run_id, epoch_num, len(train_ds), len(val_ds), batch_size, num_classes,
+        'resnet50', pretrained, 'Adam', learning_rate, betas, weight_decay, 'CrossEntropyLoss', 
         validation_interval, training_duration.total_seconds()
     ])
 

@@ -6,6 +6,7 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
 from memory_dataset import MemoryDataset
+from monai.data import ImageDataset
 
 from monai.transforms import (
     Compose, 
@@ -28,61 +29,45 @@ from monai.transforms import (
 
 from sklearn.model_selection import train_test_split
 
-from torcheval.metrics import (
-    MulticlassAccuracy,
-    MulticlassPrecision,
-    MulticlassRecall,
-    MulticlassF1Score,
-    MulticlassAUROC
-)
 
-from numpy import array
-
-def load_data(dataset_path: str, dataset_partiton_path: str):
+def load_data(image_dataset_path: str, dataset_partiton_path: str):
     """
     Load dataset from a JSON file.
     
     Args:
-        dataset_path (str): Path to the directory containing image files.
+        image_dataset_path (str): Path to the directory containing image files.
         dataset_partiton_path (str): Path to the JSON file containing image filenames and labels.
     
     Returns:
         list: List of dictionaries, each containing 'image' path and 'label' for a sample.
     """
-    # dataset = []
     images = np.array([], dtype=np.float32)
     labels = np.array([], dtype=np.int64)
     with open(dataset_partiton_path, 'r') as data_file:
         data = json.load(data_file)
-        # dataset = [{'image': os.sep.join([dataset_path, image]), 'label': label} for image, label in data.items()]
         for image, label in data.items():
-            images = np.append(images, os.sep.join([dataset_path, image]))
+            images = np.append(images, os.sep.join([image_dataset_path, image]))
             labels = np.append(labels, label)
     return images, labels
 
 
 
-def select_fn(x):
-    return x > -1
-
-
-def get_dataset(images: np.array, labels: np.array, path: str = None):
+def get_transform():
     """
-    Create a Dataset with appropriate transforms.
-    
-    Args:
-        images (np.array): List of image paths.
-        labels (np.array): List of labels.
+    Creates a transformation pipeline for image preprocessing before feeding to the model.
 
     Returns:
-        Dataset: Dataset with appropriate transforms applied.
+        Compose: A transformation pipeline that includes loading, scaling, and resizing images.
     """
-    base_transforms = Compose(
+    def select_fn(x):
+        return x > -1
+     
+    data_transform = Compose(
         [
             LoadImage(),
             EnsureChannelFirst(),
             Orientation(axcodes="RAS"),
-            ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16), # dtype=torch.float16 
+            ScaleIntensity(minv=-1, maxv=1.0, dtype=torch.float16), # dtype=torch.float16 
             Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
             
             CropForeground(
@@ -90,67 +75,72 @@ def get_dataset(images: np.array, labels: np.array, path: str = None):
                 allow_smaller=False,
                 margin=0,
             ),
-            SpatialPad(
-                spatial_size=(184, 184, 184),  
-                value=-1.0
-            ),
+            # SpatialPad(
+            #     spatial_size=(184, 184, 184),  
+            #     value=-1.0
+            # ),
             Resize(spatial_size=(128, 128, 128)),
             ToTensor(dtype=torch.float16)
         ]
     )
-      
-    labels = torch.tensor(labels, dtype=torch.int64)
+
+    return data_transform
+
+
+def get_memory_dataset(dataset_path:str = None):
+    """
+    Creates a MemoryDataset from file.
     
-    ds = MemoryDataset(
-        images=images, 
-        labels=labels, 
-        transform=base_transforms, 
-        path=path
+    Args:
+        dataset_path (str): Path to the dataset file where tensors of images and labels are stored.
+
+    Returns:
+        MemoryDataset: Dataset loaded in memory.
+    """
+    return MemoryDataset(path=dataset_path)
+
+
+def get_image_dataset(image_dataset_path:str, dataset_partiton_path:str):
+    """
+    
+    """
+    images, labels = load_data(image_dataset_path, dataset_partiton_path)
+    transform = get_transform()
+    dataset = ImageDataset(
+        image_files=images,
+        labels=labels,
+        transform=transform
     )
-    return ds
+    return dataset
 
 
-
-def create_metrics(num_classes: int = 5):
+def save_dataset_to_file(images_path:str, partition_path:str, save_path:str):
     """
-    Create evaluation metrics for multiclass classification.
-    
-    Args:
-        None
-        
-    Returns:
-        dict: Dictionary containing initialized metrics:
-            - 'accuracy': MulticlassAccuracy
-            - 'precision': MulticlassPrecision
-            - 'recall': MulticlassRecall
-            - 'f1_score': MulticlassF1Score
-            - 'auroc': MulticlassAUROC
-    """
-    accuracy = MulticlassAccuracy(num_classes=num_classes, average='macro')
-    precision = MulticlassPrecision(num_classes=num_classes, average='macro')
-    recall = MulticlassRecall(num_classes=num_classes, average='macro')
-    f1_score = MulticlassF1Score(num_classes=num_classes, average='macro')
-    auroc = MulticlassAUROC(num_classes=num_classes, average='macro')
+    Saves image data and labels as tensors to one file
 
-    return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1_score': f1_score, 'auroc': auroc}
+    Args: 
+        images_path (str): Path to the directory containing image files.
+        partition_path (str): Path to the JSON file containing image filenames and labels.
+        save_path (str): Path where the dataset will be saved.
 
-
-def reset_metrics(metrics):
-    """
-    Reset all metrics to their initial state.
-    
-    Args:
-        metrics (dict): Dictionary of metric objects to reset.
-        
     Returns:
         None
     """
-    for metric in metrics.values():
-        metric.reset()
+    images, labels = load_data(images_path, partition_path)
+    if len(images) != len(labels):
+        raise ValueError(f"Number of images ({len(images)}) does not match number of labels ({len(labels)}).")
+    
+    transform = get_transform()
+    labels = torch.tensor(labels, dtype=torch.int64)
+    image_buffer = torch.empty([len(images), 1, 128, 128, 128], dtype=torch.float16) 
+    for i, img_path in enumerate(images):
+        img_tensor =  transform(img_path)
+        image_buffer[i] = img_tensor.to(dtype=torch.float16)
+        
+    torch.save({"images" : image_buffer, "labels" : labels}, save_path)
 
 
-
-def stratified_split(images, labels, ratios: tuple = (0.8, 0.1, 0.1), seed: int = 42):
+def stratified_split(images, labels, ratios:tuple = (0.8, 0.1, 0.1), seed:int = 42):
     """
     Split a dataset into train, validation and test sets using stratified sampling.
     
@@ -184,7 +174,6 @@ def stratified_split(images, labels, ratios: tuple = (0.8, 0.1, 0.1), seed: int 
         random_state=seed
     )
 
- 
     train_ds =  [X_train, y_train]
     val_ds =  [X_val, y_val]
     test_ds =  [X_test, y_test]
