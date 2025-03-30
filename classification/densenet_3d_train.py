@@ -11,12 +11,13 @@ import torch
 from report import Report
 
 import monai 
-from monai.networks.nets import resnet18, resnet34, resnet50, resnet101
+from monai.networks.nets import densenet121, densenet169, densenet201
 from monai.data import DataLoader
 from monai.utils import set_determinism
 
 
-def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num: int = 5, validation_interval: int = 1, model_path: str = None): 
+
+def main(run_id:int = -1, batch_size:int = 4, num_workers:int = 0, epoch_num:int = 5, validation_interval:int = 1, model_path:str = None): 
     """
     Setup paths to data
     """
@@ -61,13 +62,12 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
     num_classes = 5
     pretrained = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = resnet50(
-        spatial_dims=3,
-        n_input_channels=1,
-        num_classes=num_classes,
-        pretrained=pretrained,
+    model = densenet169(
+        spatial_dims=3, 
+        in_channels=1, 
+        out_channels=num_classes
     ).to(device)
-    
+
     loss_function = torch.nn.CrossEntropyLoss()
 
     learning_rate = 1e-3 # initial training range 1e-4 to 1e-3, fine-tuning range: 1e-5 to 1e-6
@@ -124,7 +124,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
     training_duration = end_train_time - start_train_time 
     report.add_row('Training_parameters', [
         run_id, epoch_num, len(train_ds), len(val_ds), batch_size, num_classes,
-        'resnet50', pretrained, 'Adam', learning_rate, betas, weight_decay, 'CrossEntropyLoss', 
+        'densenet169', pretrained, 'Adam', learning_rate, betas, weight_decay, 'CrossEntropyLoss', 
         validation_interval, training_duration.total_seconds()
     ])
 
@@ -137,6 +137,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', type=int, default=0)
     parser.add_argument('--epoch_num', type=int, default=5)
     parser.add_argument('--validation_interval', type=int, default=1)
+    parser.add_argument('--pretrained', type=bool, default=False)
     parser.add_argument('--model_path', type=str, default=None)
     args = parser.parse_args()
 
@@ -146,5 +147,6 @@ if __name__ == "__main__":
         num_workers=args.num_workers, 
         epoch_num=args.epoch_num, 
         validation_interval=args.validation_interval, 
+        pretrained=args.pretrained,
         model_path=args.model_path
     )

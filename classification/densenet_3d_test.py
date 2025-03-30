@@ -11,7 +11,7 @@ import torch
 from report import Report
 
 import monai 
-from monai.networks.nets import resnet18, resnet34, resnet50, resnet101
+from monai.networks.nets import densenet121, densenet169, densenet201
 from monai.data import DataLoader
 from monai.utils import set_determinism
 
@@ -46,11 +46,10 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, model_path
     num_classes = 5
     pretrained = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = resnet50(
-        spatial_dims=3,
-        n_input_channels=1,
-        num_classes=num_classes,
-        pretrained=pretrained,
+    model = densenet169(
+        spatial_dims=3, 
+        in_channels=1, 
+        out_channels=num_classes
     ).to(device)
     loss_function = torch.nn.CrossEntropyLoss()
 
@@ -78,12 +77,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, model_path
         model_path=model_path,
         report=report
     )
-    tester.test(run_id)  
-
-    
-    """
-    Save confusion matrix
-    """
+    tester.test(run_id) 
 
     
 
