@@ -155,7 +155,6 @@ class Trainer():
         torch.cuda.empty_cache()
         self._scaler = GradScaler()
         self._run_id = run_id
-        self._model.to(self._device)
         for epoch in range(self._last_epoch, self._last_epoch + epoch_num):
             self._run_epoch(epoch)
             if (epoch) % self._validation_interval == 0:
@@ -228,7 +227,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
         n_input_channels=1,
         num_classes=num_classes,
         pretrained=pretrained,
-    )
+    ).to(device)
     
     loss_function = torch.nn.CrossEntropyLoss()
 
