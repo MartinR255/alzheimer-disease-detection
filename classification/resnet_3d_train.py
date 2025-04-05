@@ -28,10 +28,6 @@ models = {
 }
 
 
-
-
-
-
 def get_pretrained_model(params: dict) -> torch.nn.Module:
     return models[params['model']](
         spatial_dims=params['spatial_dims'], 
@@ -81,19 +77,6 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     save_model_path = data_config['save_models_path']
     report_root_path = data_config['save_eval_logs_path']
 
-    
-    print(mri_images_path)
-    print(train_partiton_path)
-    print(validation_partition_path)
-    print(train_transformed_data_path)
-    print(validation_transformed_data_path)
-    print(train_results_path)
-    print(val_results_path)
-    print(train_params_path)
-    print(save_model_path)
-    print(report_root_path)
-   
-
     """
     Load configs 
     """
@@ -112,17 +95,6 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     
     loss_function_name = train_config['loss']['name']
 
-    print(batch_size)
-    print(num_epochs)
-    print(num_workers)
-    print(validation_interval)
-    print(model_name)
-    print(num_classes)
-    print(pretrained)
-    print(optimizer_name)
-    print(learning_rate)
-    print(weight_decay)
-    print(loss_function_name)
     """
     Prepare data
     """
