@@ -1,13 +1,15 @@
 import os
+import yaml
 import argparse
 from datetime import datetime
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-from utils import get_memory_dataset
+from utils import get_memory_dataset, load_yaml_config, get_optimizer, get_loss
 from trainer import Trainer
 
 import torch
+
 from report import Report
 
 import monai 
@@ -16,27 +18,115 @@ from monai.data import DataLoader
 from monai.utils import set_determinism
 
 
-def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num: int = 5, validation_interval: int = 1, model_path: str = None): 
+
+
+models = {
+    'resnet18': resnet18,
+    'resnet34': resnet34,
+    'resnet50': resnet50,
+    'resnet101': resnet101
+}
+
+
+
+
+
+
+def get_pretrained_model(params: dict) -> torch.nn.Module:
+    return models[params['model']](
+        spatial_dims=params['spatial_dims'], 
+        n_input_channels=params['n_input_channels'], 
+        num_classes=params['num_classes']
+    )
+
+
+def get_resnet_model(params:dict) -> torch.nn.Module:
+    """
+    Create ResNet model with given parameters.
+    
+    Args:
+        params (dict): Dictionary containing model parameters.
+        
+    Returns:
+        torch.nn.Module: ResNet model instance.
+    """
+    if params['pretrained']:
+        return get_pretrained_model(params)
+    
+    return models[params['name']](
+        spatial_dims=params['spatial_dims'], 
+        n_input_channels=params['n_input_channels'], 
+        num_classes=params['num_classes']
+    )
+
+
+def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_path:str = None): 
+    data_config = load_yaml_config(data_config_file_path)
+    train_config = load_yaml_config(train_config_file_path)
+
     """
     Setup paths to data
     """
-    mri_images_path = os.sep.join(['pre_processed_mri'])
-    train_partiton_path = os.sep.join(['mri_classification', 'data', 'train_5.json'])
-    validation_partition_path = os.sep.join(['mri_classification', 'data', 'val_5.json'])
-    train_transformed_data_path = os.sep.join(['mri_classification', 'data', 'train_proc_5.pt'])
-    validation_transformed_data_path = os.sep.join(['mri_classification', 'data', 'val_proc_5.pt'])
-    train_results_path = os.sep.join(['mri_classification', 'eval_logs', 'train_results.csv'])
-    val_results_path = os.sep.join(['mri_classification', 'eval_logs', 'val_results.csv'])
-    train_params_path = os.sep.join(['mri_classification', 'eval_logs', 'train_params.csv'])
-    save_model_path = os.sep.join(['mri_classification', 'eval_logs', 'models']) 
-    report_root_path = os.sep.join(['mri_classification', 'eval_logs'])
+    mri_images_path = data_config['images_path']
+    train_partiton_path = data_config['train_partiton_path'] 
+    validation_partition_path = data_config['validation_partiton_path'] 
+
+    train_transformed_data_path = data_config['train_preproc_chunk_path']  
+    validation_transformed_data_path = data_config['validation_preproc_chunk_path']  
     
+    train_results_path = os.sep.join([data_config['save_eval_logs_path'], 'train_results.csv'],)
+    val_results_path = os.sep.join([data_config['save_eval_logs_path'], 'val_results.csv'])
+    train_params_path = os.sep.join([data_config['save_eval_logs_path'], 'train_params.csv'])
+
+    save_model_path = data_config['save_models_path']
+    report_root_path = data_config['save_eval_logs_path']
+
     
+    print(mri_images_path)
+    print(train_partiton_path)
+    print(validation_partition_path)
+    print(train_transformed_data_path)
+    print(validation_transformed_data_path)
+    print(train_results_path)
+    print(val_results_path)
+    print(train_params_path)
+    print(save_model_path)
+    print(report_root_path)
+   
+
+    """
+    Load configs 
+    """
+    batch_size = train_config['training']['batch_size']
+    num_epochs = train_config['training']['num_epochs']
+    num_workers = train_config['training']['num_workers']
+    validation_interval = train_config['training']['validation_interval']
+    
+    model_name = train_config['model']['name']
+    num_classes = train_config['model']['num_classes']
+    pretrained = train_config['model']['pretrained']
+
+    optimizer_name = train_config['optimizer']['name']
+    learning_rate = train_config['optimizer']['lr']
+    weight_decay = train_config['optimizer']['weight_decay']
+    
+    loss_function_name = train_config['loss']['name']
+
+    print(batch_size)
+    print(num_epochs)
+    print(num_workers)
+    print(validation_interval)
+    print(model_name)
+    print(num_classes)
+    print(pretrained)
+    print(optimizer_name)
+    print(learning_rate)
+    print(weight_decay)
+    print(loss_function_name)
     """
     Prepare data
     """
     set_determinism(seed=42)
-
     train_ds = get_memory_dataset(train_transformed_data_path) 
     train_loader = DataLoader(
         train_ds,
@@ -58,33 +148,16 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
     """
     Prepare model, loss function, optimizer etc.
     """
-    num_classes = 5
-    pretrained = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = resnet50(
-        spatial_dims=3,
-        n_input_channels=1,
-        num_classes=num_classes,
-        pretrained=pretrained,
-    ).to(device)
+    model = get_resnet_model(train_config['model']).to(device)
+    optimizer = get_optimizer(model.parameters(), train_config['optimizer'])
+    loss_function = get_loss(train_config['loss'])
     
-    loss_function = torch.nn.CrossEntropyLoss()
-
-    learning_rate = 1e-3 # initial training range 1e-4 to 1e-3, fine-tuning range: 1e-5 to 1e-6
-    betas = (0.9, 0.999) # first parameter: 0.9 to 0.95, second parameter: 0.999 to 0.9999
-    weight_decay = 1e-5 # range 1e-5 to 1e-2, default 0
-    optimizer = torch.optim.Adam(
-        params=model.parameters(), 
-        lr=learning_rate, 
-        betas=betas, 
-        weight_decay=weight_decay
-    )
-
-
+ 
     """
     Prepare report
     """
-    report  = Report(num_classes=5, root_path=report_root_path)
+    report  = Report(num_classes=num_classes, root_path=report_root_path)
     training_run_table_columns = [
         'ID', 'Epoch Number', 'Loss', 
         'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
@@ -92,7 +165,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
     report.create_table('Training_Results', training_run_table_columns, train_results_path)
     report.create_table('Validation_Results', training_run_table_columns, val_results_path)
 
-
+    
     """
     Train model
     """
@@ -108,7 +181,7 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
         report=report
     )
     start_train_time = datetime.now()
-    trainer.train(run_id, epoch_num, model_path)
+    trainer.train(run_id, num_epochs, save_model_path)
     end_train_time = datetime.now()
 
     
@@ -117,15 +190,16 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
     """
     report.create_table('Training_parameters', [
         'ID', 'Epoch Number', 'Training Data Size', 'Validation Data Size', 
-        'Batch Size', 'Num Classes', 'Network Type', 'Pretrained', 'Optimizer', 'Learning Rate', 'Betas', 
+        'Batch Size', 'Num Classes', 'Network Type', 'Pretrained', 'Optimizer', 'Learning Rate', 
         'Weight Decay', 'Loss Function', 'Validation Interval', 'Training Duration (seconds)'
     ], train_params_path)
 
     training_duration = end_train_time - start_train_time 
+    optimizer_name = train_config['optimizer']['active']
     report.add_row('Training_parameters', [
-        run_id, epoch_num, len(train_ds), len(val_ds), batch_size, num_classes,
-        'resnet50', pretrained, 'Adam', learning_rate, betas, weight_decay, 'CrossEntropyLoss', 
-        validation_interval, training_duration.total_seconds()
+        run_id, num_epochs, len(train_ds), len(val_ds), batch_size, num_classes,
+        model_name, pretrained, optimizer_name, learning_rate, weight_decay, 
+        loss_function_name, validation_interval, training_duration.total_seconds()
     ])
 
     
@@ -133,18 +207,12 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, epoch_num:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--run_id', type=int, default=-1)
-    parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--num_workers', type=int, default=0)
-    parser.add_argument('--epoch_num', type=int, default=5)
-    parser.add_argument('--validation_interval', type=int, default=1)
-    parser.add_argument('--model_path', type=str, default=None)
+    parser.add_argument('--data_config', type=str, default=None)
+    parser.add_argument('--train_config', type=str, default=None)
     args = parser.parse_args()
 
     main(
         run_id=args.run_id, 
-        batch_size=args.batch_size, 
-        num_workers=args.num_workers, 
-        epoch_num=args.epoch_num, 
-        validation_interval=args.validation_interval, 
-        model_path=args.model_path
+        data_config_file_path=args.data_config,
+        train_config_file_path=args.train_config
     )
