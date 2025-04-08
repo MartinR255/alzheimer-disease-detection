@@ -7,7 +7,7 @@ training:
 
 
 model:
- name: 'densenet121' # , densenet169, densenet201
+ name: 'densenet121' # densenet121, densenet169, densenet201
  num_classes: 5 
  spatial_dims: 3
  n_input_channels: 1 
@@ -25,5 +25,3 @@ loss:
  name: 'cross_entropy'
 
 ...
-
-

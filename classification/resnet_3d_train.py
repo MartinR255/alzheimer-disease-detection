@@ -87,8 +87,7 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     optimizer = get_optimizer(model.parameters(), train_config['optimizer'])
     loss_function = get_loss(train_config['loss'])
     
-    print(model)
-    return 
+
     """
     Prepare report
     """

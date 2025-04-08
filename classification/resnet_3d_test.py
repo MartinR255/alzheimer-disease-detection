@@ -8,12 +8,9 @@ from utils import get_resnet_model
 from tester import Tester
 
 import torch
-import torch.nn as nn
 
 from report import Report
 
-import monai 
-from monai.networks.nets import resnet18, resnet34, resnet50, resnet101
 from monai.data import DataLoader
 from monai.utils import set_determinism
  
@@ -38,12 +35,7 @@ def main(run_id: int = -1, data_config_file_path:str = None, train_config_file_p
     load_model_path = train_config['model']['load_model_path']
     batch_size = train_config['testing']['batch_size']
     num_workers = train_config['testing']['num_workers']
-  
-    model_name = train_config['model']['name']
     num_classes = train_config['model']['num_classes']
-
-    loss_function_name = train_config['loss']['name']
-
 
     """
     Prepare data

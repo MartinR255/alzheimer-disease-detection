@@ -3,30 +3,40 @@ import argparse
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-from utils import get_memory_dataset
+from utils import get_memory_dataset, load_yaml_config, get_loss
+from utils import get_densenet_model
 from tester import Tester
 
 import torch
 
 from report import Report
 
-import monai 
-from monai.networks.nets import densenet121, densenet169, densenet201
 from monai.data import DataLoader
 from monai.utils import set_determinism
+ 
 
-     
-def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, model_path: str = None): 
+
+def main(run_id: int = -1, data_config_file_path:str = None, train_config_file_path:str = None): 
+    data_config = load_yaml_config(data_config_file_path)
+    train_config = load_yaml_config(train_config_file_path)
+
     """
     Setup paths to data
     """
-    mri_images_path = os.sep.join(['pre_processed_mri'])
-    test_partition_path = os.sep.join(['mri_classification', 'data', 'test_5.json'])
-    test_transformed_data_path = os.sep.join(['mri_classification', 'data', 'test_proc_5.pt'])
-    test_results_path = os.sep.join(['mri_classification', 'eval_logs', 'test_results.csv'])
-    report_root_path = os.sep.join(['mri_classification', 'eval_logs'])
+    mri_images_path = data_config['images_path']
+    test_partiton_path = data_config['test_partiton_path'] 
+    test_transformed_data_path = data_config['test_preproc_chunk_path']   
+    test_results_path = os.sep.join([data_config['save_eval_logs_path'], 'test_results.csv'],)
+    report_root_path = data_config['save_eval_logs_path']
 
-    
+    """
+    Load configs 
+    """
+    load_model_path = train_config['model']['load_model_path']
+    batch_size = train_config['testing']['batch_size']
+    num_workers = train_config['testing']['num_workers']
+    num_classes = train_config['model']['num_classes']
+
     """
     Prepare data
     """
@@ -43,24 +53,16 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, model_path
     """
     Prepare model and loss function
     """
-    num_classes = 5
-    pretrained = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = densenet169(
-        spatial_dims=3, 
-        in_channels=1, 
-        out_channels=num_classes
-    ).to(device)
-    loss_function = torch.nn.CrossEntropyLoss()
-
-
+    model = get_densenet_model(train_config['model']).to(device)
+    loss_function = get_loss(train_config['loss'])
 
     """
     Prepare report
     """
-    report  = Report(num_classes=5, root_path=report_root_path)
+    report  = Report(num_classes=num_classes, root_path=report_root_path)
     test_run_table_columns = [
-        'ID', 'Epoch Number', 'Loss', 
+        'ID', 'Loss', 
         'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
     ]
     report.create_table('test_results', test_run_table_columns, test_results_path)
@@ -74,24 +76,21 @@ def main(run_id: int = -1, batch_size: int = 4, num_workers: int = 0, model_path
         loss_function=loss_function, 
         test_data=test_loader, 
         device=device,
-        model_path=model_path,
         report=report
     )
-    tester.test(run_id) 
+    tester.test(run_id, load_model_path)  
 
     
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--run_id', type=int, default=-1)
-    parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--num_workers', type=int, default=0)
-    parser.add_argument('--model_path', type=str, default=None)
+    parser.add_argument('--data_config', type=str, default=None)
+    parser.add_argument('--train_config', type=str, default=None)
     args = parser.parse_args()
 
     main(
         run_id=args.run_id, 
-        batch_size=args.batch_size, 
-        num_workers=args.num_workers, 
-        model_path=args.model_path
+        data_config_file_path=args.data_config,
+        train_config_file_path=args.train_config
     )
