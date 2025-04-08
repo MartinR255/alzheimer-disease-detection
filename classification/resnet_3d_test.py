@@ -4,9 +4,11 @@ import argparse
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from utils import get_memory_dataset, load_yaml_config, get_loss
+from utils import get_resnet_model
 from tester import Tester
 
 import torch
+import torch.nn as nn
 
 from report import Report
 
@@ -14,9 +16,8 @@ import monai
 from monai.networks.nets import resnet18, resnet34, resnet50, resnet101
 from monai.data import DataLoader
 from monai.utils import set_determinism
+ 
 
-     
-import torch.nn as nn
 
 def main(run_id: int = -1, data_config_file_path:str = None, train_config_file_path:str = None): 
     data_config = load_yaml_config(data_config_file_path)
@@ -61,17 +62,7 @@ def main(run_id: int = -1, data_config_file_path:str = None, train_config_file_p
     Prepare model and loss function
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = resnet18(
-        spatial_dims=3, 
-        n_input_channels=1, 
-        num_classes=5
-    )
-
-    model.fc = nn.Sequential(
-        nn.Dropout(p=0.4),  # Dropout applied after the fully connected layer's output.
-        model.fc
-    )
-    
+    model = get_resnet_model(train_config['model']).to(device)
     loss_function = get_loss(train_config['loss'])
 
     """
