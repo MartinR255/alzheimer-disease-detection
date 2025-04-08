@@ -6,6 +6,16 @@ import numpy as np
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
+from monai.networks.nets import (
+    resnet18, 
+    resnet34, 
+    resnet50, 
+    resnet101, 
+    densenet121, 
+    densenet169, 
+    densenet201
+)
+
 from torch.nn import Parameter
 from memory_dataset import MemoryDataset
 from monai.data import ImageDataset
@@ -193,6 +203,9 @@ def load_yaml_config(file_path:str) -> dict:
     return config
 
 
+"""
+Optimizer functions
+"""
 def get_adam_optimizer(model_params:Iterable[Parameter], params:dict) -> torch.optim.Adam:
     return torch.optim.Adam(
         model_params, 
@@ -241,7 +254,9 @@ def get_optimizer(model_params:Iterable[Parameter], params:dict) -> torch.optim.
     return optimizer(model_params, params)
 
 
-
+"""
+Loss functions
+"""
 def get_cross_entropy_loss(params:dict) -> torch.nn.CrossEntropyLoss:
     return torch.nn.CrossEntropyLoss()
 
@@ -261,3 +276,4 @@ def get_loss(params:dict) -> torch.nn.Module:
     loss_function = loss_functions[loss_name]
     
     return loss_function(params)
+

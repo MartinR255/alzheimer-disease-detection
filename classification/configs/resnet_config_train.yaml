@@ -7,11 +7,10 @@ training:
 
 
 model:
- name: 'resnet18' # resnet18, resnet34, resnet50
+ name: 'resnet18' # resnet18, resnet34, resnet50, resnet101(pretrained models: resnet18p,resnet34p,resnet50p) 
  num_classes: 5 
  spatial_dims: 3
  n_input_channels: 1 
- pretrained: false
  load_model_path: null # path to pretrained model(and/or optimizer) state dict
 
 
@@ -22,8 +21,6 @@ optimizer:
  betas: [0.9, 0.999] # adam, adamw
 
 loss:
- name: 'cross_entropy'
+ name: 'cross_entropy' # cross_entropy
 
 ...
-
-

@@ -6,54 +6,16 @@ from datetime import datetime
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from utils import get_memory_dataset, load_yaml_config, get_optimizer, get_loss
+from utils import get_resnet_model
+
 from trainer import Trainer
 
 import torch
 
 from report import Report
 
-import monai 
-from monai.networks.nets import resnet18, resnet34, resnet50, resnet101
 from monai.data import DataLoader
 from monai.utils import set_determinism
-
-
-
-
-models = {
-    'resnet18': resnet18,
-    'resnet34': resnet34,
-    'resnet50': resnet50,
-    'resnet101': resnet101
-}
-
-
-def get_pretrained_model(params: dict) -> torch.nn.Module:
-    return models[params['model']](
-        spatial_dims=params['spatial_dims'], 
-        n_input_channels=params['n_input_channels'], 
-        num_classes=params['num_classes']
-    )
-
-
-def get_resnet_model(params:dict) -> torch.nn.Module:
-    """
-    Create ResNet model with given parameters.
-    
-    Args:
-        params (dict): Dictionary containing model parameters.
-        
-    Returns:
-        torch.nn.Module: ResNet model instance.
-    """
-    if params['pretrained']:
-        return get_pretrained_model(params)
-    
-    return models[params['name']](
-        spatial_dims=params['spatial_dims'], 
-        n_input_channels=params['n_input_channels'], 
-        num_classes=params['num_classes']
-    )
 
 
 def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_path:str = None): 
@@ -80,6 +42,7 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     """
     Load configs 
     """
+    load_model_path = train_config['model']['load_model_path']
     batch_size = train_config['training']['batch_size']
     num_epochs = train_config['training']['num_epochs']
     num_workers = train_config['training']['num_workers']
@@ -87,7 +50,6 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     
     model_name = train_config['model']['name']
     num_classes = train_config['model']['num_classes']
-    pretrained = train_config['model']['pretrained']
 
     optimizer_name = train_config['optimizer']['name']
     learning_rate = train_config['optimizer']['lr']
@@ -125,7 +87,8 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     optimizer = get_optimizer(model.parameters(), train_config['optimizer'])
     loss_function = get_loss(train_config['loss'])
     
- 
+    print(model)
+    return 
     """
     Prepare report
     """
@@ -153,7 +116,7 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
         report=report
     )
     start_train_time = datetime.now()
-    trainer.train(run_id, num_epochs, save_model_path)
+    trainer.train(run_id, num_epochs, load_model_path)
     end_train_time = datetime.now()
 
     
@@ -162,15 +125,14 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     """
     report.create_table('Training_parameters', [
         'ID', 'Epoch Number', 'Training Data Size', 'Validation Data Size', 
-        'Batch Size', 'Num Classes', 'Network Type', 'Pretrained', 'Optimizer', 'Learning Rate', 
+        'Batch Size', 'Num Classes', 'Network Type', 'Optimizer', 'Learning Rate', 
         'Weight Decay', 'Loss Function', 'Validation Interval', 'Training Duration (seconds)'
     ], train_params_path)
 
     training_duration = end_train_time - start_train_time 
-    optimizer_name = train_config['optimizer']['active']
     report.add_row('Training_parameters', [
         run_id, num_epochs, len(train_ds), len(val_ds), batch_size, num_classes,
-        model_name, pretrained, optimizer_name, learning_rate, weight_decay, 
+        model_name, optimizer_name, learning_rate, weight_decay, 
         loss_function_name, validation_interval, training_duration.total_seconds()
     ])
 

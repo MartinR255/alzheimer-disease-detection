@@ -147,7 +147,9 @@ class Report:
     def save_confusion_matrix(self, predicted_labels, ground_truth_labels, file_name:str):
         file_path = os.sep.join([self._root_path, 'confusion_matrices', file_name]) 
         conf_matrix = multiclass_confusion_matrix(predicted_labels, ground_truth_labels, self._num_classes)
-        torch.save(conf_matrix, file_path)
+        conf_matrix_array = conf_matrix.cpu().numpy()
+        df = pd.DataFrame(conf_matrix_array)
+        df.to_csv(file_path, index=True)
         
         
     

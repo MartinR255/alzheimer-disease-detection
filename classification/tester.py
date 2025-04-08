@@ -10,7 +10,6 @@ import monai
 from monai.data import DataLoader
 
 
-
 class Tester():
 
     def __init__(self, 
@@ -18,23 +17,19 @@ class Tester():
                 loss_function:torch.nn.Module, 
                 test_data:DataLoader, 
                 device:torch.device,
-                save_model_path:str,
                 report: Report     
     ) -> None: 
         self._model = model
         self._loss_function = loss_function
         self._test_data = test_data
         self._device = device
-        self._save_model_path = save_model_path
         self._report = report
 
         self._report.init_metrics('test')
 
 
-    def _test(self, run_id:int) -> None:
-        self._load_model(self._save_model_path)
-        self._model
-
+    def test(self, run_id:int, model_path:str) -> None:
+        self._load_model(model_path)
         self._model.eval()
         self._report.reset_metrics('test')
         epoch_loss = 0
@@ -66,20 +61,13 @@ class Tester():
         self._report.add_row('test_results', [
             run_id,
             epoch_loss,
-            metrics_values['test'],
-            metrics_values['test'],
-            metrics_values['test'],
-            metrics_values['test'],
-            metrics_values['test']
+            metrics_values['accuracy'],
+            metrics_values['precision'], 
+            metrics_values['recall'], 
+            metrics_values['f1_score'], 
+            metrics_values['auroc']
         ])
-        self._report.save_confusion_matrix(predicted_labels, ground_truth_labels, f'conf_mat_{run_id}.pt')
-
-
-        # Save the best model based on f1 score
-        metric = metrics_values['f1_score']
-        if metric > self._best_metric:
-            self._best_metric = metric
-        print(f'Best Metric: {self._best_metric}')
+        self._report.save_confusion_matrix(predicted_labels, ground_truth_labels, f'conf_mat_{run_id}.csv')
 
 
     def _load_model(self, model_path:str) -> None:

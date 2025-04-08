@@ -24,32 +24,7 @@ models = {
 }
 
 
-def get_pretrained_model(params: dict) -> torch.nn.Module:
-    return models[params['name']](
-        spatial_dims=params['spatial_dims'], 
-        in_channels=params['n_input_channels'], 
-        out_channels=params['num_classes']
-    )
 
-
-def get_densenet_model(params:dict) -> torch.nn.Module:
-    """
-    Create DenseNet model with given parameters.
-    
-    Args:
-        params (dict): Dictionary containing model parameters.
-        
-    Returns:
-        torch.nn.Module: DenseNet model instance.
-    """
-    if params['pretrained']:
-        return get_pretrained_model(params)
-    
-    return models[params['name']](
-        spatial_dims=params['spatial_dims'], 
-        in_channels=params['n_input_channels'], 
-        out_channels=params['num_classes']
-    )
 
 
 def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_path:str = None): 

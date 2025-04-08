@@ -1,0 +1,18 @@
+---
+testing:
+ batch_size: 16
+ num_workers: 0
+
+
+model:
+ name: 'resnet18' # resnet18, resnet34, resnet50, resnet101 
+ num_classes: 5 
+ spatial_dims: 3
+ n_input_channels: 1 
+ load_model_path: null # path to pretrained model(and/or optimizer) state dict
+
+
+loss:
+ name: 'cross_entropy' # cross_entropy
+
+...
