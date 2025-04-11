@@ -86,11 +86,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--run_id', type=int, default=-1)
     parser.add_argument('--data_config', type=str, default=None)
-    parser.add_argument('--train_config', type=str, default=None)
+    parser.add_argument('--test_config', type=str, default=None)
     args = parser.parse_args()
 
     main(
         run_id=args.run_id, 
         data_config_file_path=args.data_config,
-        train_config_file_path=args.train_config
+        train_config_file_path=args.test_config
     )
