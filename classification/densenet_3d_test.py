@@ -4,7 +4,7 @@ import argparse
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from utils import get_memory_dataset, load_yaml_config, get_loss
-from utils import get_resnet_model
+from utils import get_densenet_model
 from tester import Tester
 
 import torch
@@ -54,7 +54,7 @@ def main(run_id: int = -1, data_config_file_path:str = None, train_config_file_p
     Prepare model and loss function
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = get_resnet_model(train_config['model']).to(device)
+    model = get_densenet_model(train_config['model']).to(device)
     loss_function = get_loss(train_config['loss'])
 
     """
