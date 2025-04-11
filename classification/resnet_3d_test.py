@@ -57,7 +57,6 @@ def main(run_id: int = -1, data_config_file_path:str = None, train_config_file_p
     model = get_resnet_model(train_config['model']).to(device)
     loss_function = get_loss(train_config['loss'])
 
-    print(model)
     """
     Prepare report
     """
