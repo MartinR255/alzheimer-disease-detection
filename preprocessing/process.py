@@ -158,15 +158,13 @@ class MRIPreprocessor:
         Returns:
             MRIPreprocessor: The preprocessor instance for method chaining.
         """
-        output_mask = aspyputil.brain_extraction(self._mri_image, 't1') 
-
-        self._mri_image = self._mri_image * output_mask
-        self._mri_mask = output_mask
+        self._mri_mask = aspyputil.brain_extraction(self._mri_image, 't1') 
+        self._mri_image = self._mri_image * self._mri_mask
 
         return self
 
 
-    def save_mri(self, output_path: str):
+    def save_mri(self, mri_output_path: str, mask_output_path:str=None):
         """Save the preprocessed MRI image to a file.
 
         Args:
@@ -175,8 +173,13 @@ class MRIPreprocessor:
         Returns:
             MRIPreprocessor: The preprocessor instance for method chaining.
         """
-        self.logger.debug(f'Saving preprocessed data to {output_path}')
-        ants.image_write(self._mri_image, output_path)
+        self.logger.debug(f'Saving preprocessed image to {mri_output_path}')
+        ants.image_write(self._mri_image, mri_output_path)
+
+        if mask_output_path:
+            self.logger.debug(f'Saving mask of preprocessed image to {mask_output_path}')
+            ants.image_write(self._mri_mask, mask_output_path)
 
         return self
     
+
