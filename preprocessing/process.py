@@ -65,6 +65,7 @@ class MRIPreprocessor:
         """
         Convert the DICOM series to a NIfTI file with the specified name
         """
+        self.logger.debug(f'Converting DICOM series to NIfTI: {output_file_path}')
         dicom2nifti.dicom_series_to_nifti(dicom_folder_path, output_file_path, reorient_nifti=True)
 
         return self.load_mri(output_file_path)
@@ -141,11 +142,12 @@ class MRIPreprocessor:
         return self
     
 
-    def reorient_image(self):
-        self._mri_image = ants.reorient_image2(self._mri_image, orientation='RAS')
+    def reorient_image(self, orientation:str='RAS'):
+        self.logger.debug(f'Reorienting MRI image to {orientation} orientation')
+        self._mri_image = ants.reorient_image2(self._mri_image, orientation=orientation)
 
         if self._mri_mask:
-            self._mri_mask = ants.reorient_image2(self._mri_mask, orientation='RAS')
+            self._mri_mask = ants.reorient_image2(self._mri_mask, orientation=orientation)
         return self
     
 
@@ -161,6 +163,26 @@ class MRIPreprocessor:
         self._mri_mask = aspyputil.brain_extraction(self._mri_image, 't1') 
         self._mri_image = self._mri_image * self._mri_mask
 
+        return self
+    
+
+    def add_adaptive_gaussian_noise(self, mean:float = 0.0, standardDeviation:float = 1.0):
+        self.logger.debug(f'Adding adaptive gaussian noise to MRI image')
+        self._mri_image = ants.add_noise_to_image(
+            self._mri_image, 
+            'additivegaussian', 
+            (mean, standardDeviation)
+        )
+        return self
+    
+
+    def add_salt_and_pepper_noise(self, probability:float = 0.1, saltValue:float = 0.0, pepperValue:float = 100.0):
+        self.logger.debug(f'Adding salt and pepper noise to MRI image')
+        self._mri_image = ants.add_noise_to_image(
+            self._mri_image, 
+            'saltandpepper', 
+            (probability, saltValue, pepperValue)
+        )
         return self
 
 
@@ -182,4 +204,3 @@ class MRIPreprocessor:
 
         return self
     
-
