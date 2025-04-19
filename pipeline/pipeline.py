@@ -8,16 +8,47 @@ from datetime import datetime
 from utils import (
     load_yaml_config, 
     find_dicom_directories,
-    del_file
+    del_file, 
+    load_model, 
+    get_transform
 )
 from process import MRIPreprocessor
+
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+import torch
+from monai.networks.nets import resnet18, resnet34
+
+from unlabeled_dataset import UnlabeledDataset
+from monai.data import DataLoader
 
 
 
 def main(config_path:str):
+
+
+
+
+
     today_date = datetime.today().strftime('%Y-%m-%d')
 
     config = load_yaml_config(config_path)
+
+    # Setup model
+    spatial_dims = 3
+    n_input_channels = 1
+    num_classes = 5
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model =  resnet34(
+        spatial_dims=spatial_dims, 
+        n_input_channels=n_input_channels, 
+        num_classes=num_classes
+    ).to(device)
+    model = load_model(model, config['model_path'])
+
+
+    # Setup preprocessing/data cleaning
     mni_template = config['mni_template_path']
     save_nifti_format = config['save_nifti_format']
     save_brain_mask = config['save_brain_mask']
@@ -52,9 +83,18 @@ def main(config_path:str):
 
 
         # Data preprocessing
-
+        processed_image = None
 
         # Classification 
+        model.eval()
+        predicted_label = None
+        with torch.no_grad():
+            inputs = processed_image.to(device)
+            model_out = model(inputs)
+            model_out_argmax = model_out.argmax(dim=1)
+            predicted_label = model_out_argmax.cpu().numpy()
+
+
 
 
    
