@@ -3,44 +3,42 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 
-
+import nibabel as nib
 
 from utils import (
     load_yaml_config, 
     find_dicom_directories,
     del_file, 
     load_model, 
-    get_transform
+    get_transform_clean_tensor,
+    get_transform_resample_tensor
 )
 from process import MRIPreprocessor
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
-from monai.networks.nets import resnet18, resnet34
+from monai.networks.nets import resnet18
+import ants
+import numpy as np
 
-from unlabeled_dataset import UnlabeledDataset
-from monai.data import DataLoader
 
-
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider
 
 def main(config_path:str):
-
-
-
-
-
     today_date = datetime.today().strftime('%Y-%m-%d')
-
     config = load_yaml_config(config_path)
 
-    # Setup model
+    # # Setup model
     spatial_dims = 3
     n_input_channels = 1
     num_classes = 5
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model =  resnet34(
+    model =  resnet18(
         spatial_dims=spatial_dims, 
         n_input_channels=n_input_channels, 
         num_classes=num_classes
@@ -71,33 +69,6 @@ def main(config_path:str):
         if save_brain_mask:
             processed_file_mask_path = os.sep.join([output_folder_path, f'{scan_id}_mask.nii.gz'])
 
-        # Data cleaning
-        try:
-            preprocessor.dicom_to_nifti(folder_path, nifti_file_path) \
-                        .reorient_image() \
-                        .skull_strip() \
-                        .register_to_mni(mni_template, 'Affine') \
-                        .save_mri(processed_file_path, processed_file_mask_path)
-        except Exception as e:
-            print(f'Error processing {folder_path}: {e}')
-
-
-        # Data preprocessing
-        processed_image = None
-
-        # Classification 
-        model.eval()
-        predicted_label = None
-        with torch.no_grad():
-            inputs = processed_image.to(device)
-            model_out = model(inputs)
-            model_out_argmax = model_out.argmax(dim=1)
-            predicted_label = model_out_argmax.cpu().numpy()
-
-
-
-
-   
 
 if __name__ == '__main__': 
     parser = argparse.ArgumentParser()
