@@ -16,10 +16,9 @@ from monai.utils import set_determinism
  
 
 
-def main(run_id: int = -1, data_config_file_path:str = None, train_config_file_path:str = None): 
-    data_config = load_yaml_config(data_config_file_path)
-    train_config = load_yaml_config(train_config_file_path)
-
+def main(run_id: int, data_config:dict, train_config:dict): 
+    
+    # train_config = load_yaml_config(train_config_file_path)
     """
     Setup paths to data
     """
