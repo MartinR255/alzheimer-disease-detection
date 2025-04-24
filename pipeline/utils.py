@@ -45,6 +45,7 @@ def find_dicom_directories(root_path) -> list:
             except Exception:
                 continue 
     return dicom_dirs
+    
 
 
 def del_file(file_path:str, logger):
@@ -73,10 +74,9 @@ def get_transform_clean_tensor() -> Compose:
     def select_fn(x):
         return x > -1
     
-     
     data_transform = Compose(
         [
-            LoadImage(),
+            LoadImage(reader="monai.data.ITKReader"),
             EnsureChannelFirst(),
             ScaleIntensity(minv=-1, maxv=1.0, dtype=torch.float16),
             Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
@@ -90,7 +90,6 @@ def get_transform_clean_tensor() -> Compose:
             #     spatial_size=(184, 184, 184),  
             #     value=-1.0
             # ),
-            ScaleIntensity(minv=-1, maxv=1.0, dtype=torch.float32)
         ]
     )
 
@@ -100,7 +99,8 @@ def get_transform_clean_tensor() -> Compose:
 def get_transform_resample_tensor():
     data_transform = Compose(
         [   
-            Resize(spatial_size=(128, 128, 128))
+            Resize(spatial_size=(128, 128, 128)),
+            ScaleIntensity(minv=-1, maxv=1.0, dtype=torch.float32)
         ]
     )
 

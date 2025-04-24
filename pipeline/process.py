@@ -67,7 +67,6 @@ class MRIPreprocessor:
         self.logger.debug(f'Converting DICOM series to NIfTI: {output_file_path}')
 
         dicom2nifti.dicom_series_to_nifti(dicom_folder_path, output_file=output_file_path, reorient_nifti=False)
-        self.load_mri(output_file_path)
        
         return self
         
@@ -196,3 +195,4 @@ class MRIPreprocessor:
         """
         self._mri = ants.new_image_like(self._mri_image, data)
         return self
+    
