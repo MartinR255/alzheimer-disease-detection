@@ -28,7 +28,7 @@ class Tester():
         self._report.init_metrics('test')
 
 
-    def test(self, run_id:int, model_path:str) -> None:
+    def test(self, run_id:int, epoch:int, model_path:str) -> None:
         self._load_model(model_path)
         self._model.eval()
         self._report.reset_metrics('test')
@@ -61,6 +61,7 @@ class Tester():
         self._report.add_row('test_results', [
             run_id,
             epoch_loss,
+            epoch,
             metrics_values['accuracy'],
             metrics_values['precision'], 
             metrics_values['recall'], 
