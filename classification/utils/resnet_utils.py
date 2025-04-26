@@ -70,7 +70,7 @@ def add_dropout_relu(model:torch.nn.Module, dropout_rate:float) -> torch.nn.Modu
         if len(list(module.children())) > 0:
             add_dropout_relu(module, dropout_rate)
         if isinstance(module, nn.ReLU):
-            new = nn.Sequential(module, nn.Dropout(p=dropout_rate, inplace=True))
+            new = nn.Sequential(module, nn.Dropout(p=dropout_rate, inplace=False))
             setattr(model, name, new)
 
 
@@ -121,8 +121,5 @@ def get_resnet_model(params:dict) -> torch.nn.Module:
 
     if params['dropout_rate_fc']:
         add_dropout_fc(model, params['dropout_rate_fc'])
-
-    
-       
 
     return model
