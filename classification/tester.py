@@ -60,8 +60,8 @@ class Tester():
         metrics_values = self._report.compute_metrics('test')
         self._report.add_row('test_results', [
             run_id,
-            epoch_loss,
             epoch,
+            epoch_loss,
             metrics_values['accuracy'],
             metrics_values['precision'], 
             metrics_values['recall'], 

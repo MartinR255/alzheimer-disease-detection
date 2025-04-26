@@ -29,10 +29,10 @@ def main(run_id:int, data_config:dict, train_config:dict):
     """
     Load configs 
     """
-    load_model_path = train_config['load_model_path']
+    load_model_path = train_config['model']['load_model_path']
     batch_size = train_config['batch_size']
     num_workers = train_config['num_workers']
-    num_classes = train_config['num_classes']
+    num_classes = train_config['model']['num_classes']
     epoch = train_config['epoch']
 
     """
@@ -60,7 +60,7 @@ def main(run_id:int, data_config:dict, train_config:dict):
     """
     report  = Report(num_classes=num_classes, root_path=report_root_path)
     test_run_table_columns = [
-        'ID', 'Loss', 'Epoch'
+        'ID', 'Epoch', 'Loss',
         'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
     ]
     report.create_table('test_results', test_run_table_columns, test_results_path)
@@ -77,18 +77,3 @@ def main(run_id:int, data_config:dict, train_config:dict):
         report=report
     )
     tester.test(run_id, epoch, load_model_path)  
-
-    
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--run_id', type=int, default=-1)
-    parser.add_argument('--data_config', type=str, default=None)
-    parser.add_argument('--test_config', type=str, default=None)
-    args = parser.parse_args()
-
-    main(
-        run_id=args.run_id, 
-        data_config_file_path=args.data_config,
-        train_config_file_path=args.test_config
-    )

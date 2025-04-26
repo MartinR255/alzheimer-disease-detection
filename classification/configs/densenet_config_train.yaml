@@ -11,9 +11,9 @@ model:
  num_classes: 5 
  spatial_dims: 3
  n_input_channels: 1 
- pretrained: false
  load_model_path: null # path to pretrained model(and/or optimizer) state dict
-
+ dropout_rate_fc: null # not implemented
+ dropout_rate_relu: null # not implemented
 
 optimizer:
  name: 'adamw' # adam, adamw, rmsprop
