@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -116,10 +117,10 @@ def get_resnet_model(params:dict) -> torch.nn.Module:
         num_classes=params['num_classes']
     )
     
-    if params['dropout_rate_relu']:
+    if pd.isna(params['dropout_rate_relu']) is False:
         add_dropout_relu(model, params['dropout_rate_relu'])
 
-    if params['dropout_rate_fc']:
+    if pd.isna(params['dropout_rate_fc']) is False:
         add_dropout_fc(model, params['dropout_rate_fc'])
 
     
