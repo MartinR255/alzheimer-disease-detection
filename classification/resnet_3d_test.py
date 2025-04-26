@@ -16,7 +16,10 @@ from monai.utils import set_determinism
  
 
 
-def main(run_id:int, data_config:dict, train_config:dict): 
+def main(run_id: int = -1, data_config_file_path:str = None, train_config_file_path:str = None): 
+    data_config = load_yaml_config(data_config_file_path)
+    train_config = load_yaml_config(train_config_file_path)
+
     """
     Setup paths to data
     """
@@ -30,10 +33,9 @@ def main(run_id:int, data_config:dict, train_config:dict):
     Load configs 
     """
     load_model_path = train_config['model']['load_model_path']
-    batch_size = train_config['batch_size']
-    num_workers = train_config['num_workers']
+    batch_size = train_config['testing']['batch_size']
+    num_workers = train_config['testing']['num_workers']
     num_classes = train_config['model']['num_classes']
-    epoch = train_config['epoch']
 
     """
     Prepare data
@@ -60,14 +62,14 @@ def main(run_id:int, data_config:dict, train_config:dict):
     """
     report  = Report(num_classes=num_classes, root_path=report_root_path)
     test_run_table_columns = [
-        'ID', 'Epoch', 'Loss',
+        'ID', 'Loss', 
         'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
     ]
     report.create_table('test_results', test_run_table_columns, test_results_path)
 
 
     """
-    Test model
+    Train model
     """
     tester = Tester(
         model=model, 
@@ -76,4 +78,19 @@ def main(run_id:int, data_config:dict, train_config:dict):
         device=device,
         report=report
     )
-    tester.test(run_id, epoch, load_model_path)  
+    tester.test(run_id, load_model_path)  
+
+    
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--run_id', type=int, default=-1)
+    parser.add_argument('--data_config', type=str, default=None)
+    parser.add_argument('--test_config', type=str, default=None)
+    args = parser.parse_args()
+
+    main(
+        run_id=args.run_id, 
+        data_config_file_path=args.data_config,
+        train_config_file_path=args.test_config
+    )
