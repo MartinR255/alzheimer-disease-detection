@@ -78,7 +78,8 @@ def get_transform_clean_tensor() -> Compose:
         [
             LoadImage(reader="monai.data.ITKReader"),
             EnsureChannelFirst(),
-            ScaleIntensity(minv=-1, maxv=1.0, dtype=torch.float16),
+            Orientation(axcodes="RAS"),
+            ScaleIntensity(minv=-1, maxv=1.0, dtype=torch.float16), 
             Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
             
             CropForeground(

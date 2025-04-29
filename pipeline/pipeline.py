@@ -1,10 +1,8 @@
 import os
 import json
 import argparse
+import numpy as np
 from pathlib import Path
-from datetime import datetime
-
-import nibabel as nib
 
 from utils import (
     load_yaml_config, 
@@ -20,22 +18,24 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
 from monai.networks.nets import resnet18
-import ants
-import numpy as np
+
+from captum.attr import Occlusion
+from pytorch_grad_cam import GradCAM
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+
+from monai.transforms import Resize
 
 
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider
 
-class P:
+class Pipeline:
 
     def __init__(self, run_id:str, config_path:str):
         self._run_id = run_id
         self._config = load_yaml_config(config_path)
         self._setup_paths()
         self._setup_model()
+        self._setup_gradcam()
+        self._setup_occlusion()
         self._predicted_labels = {}
 
 
@@ -71,11 +71,16 @@ class P:
                 processed_file_mask_path:str
             ):
         try:
+            # preprocessor.dicom_to_nifti(folder_path, nifti_file_path) \
+            # .load_mri(nifti_file_path) \
+            # .reorient_image('LAS') \
+            # .skull_strip() \
+            # .register_to_mni(self._mni_template, 'Affine') \
+            # .save_mri(processed_file_path, processed_file_mask_path)
             preprocessor.dicom_to_nifti(folder_path, nifti_file_path) \
             .load_mri(nifti_file_path) \
-            .reorient_image('LAS') \
+            .register_to_mni(self._mni_template, 'SyN') \
             .skull_strip() \
-            .register_to_mni(self._mni_template, 'Affine') \
             .save_mri(processed_file_path, processed_file_mask_path)
         except Exception as e:
             print(f'Error processing {folder_path}: {e}')
@@ -92,11 +97,76 @@ class P:
             input_image = image_data.to(self._device)
             model_out = self._model(input_image)
             model_out_argmax = model_out.argmax(dim=1)
-            predicted_label = model_out_argmax
-
-        self._predicted_labels[scan_id] = predicted_label.item()
-
+            predicted_label = model_out_argmax.item()
+      
+        self._predicted_labels[scan_id] = predicted_label
+        return predicted_label
     
+
+    def _setup_gradcam(self):
+        layers = [self._model.layer4[-1]]
+        self._gradcam = GradCAM(model=self._model, target_layers=layers)
+
+
+    def _get_gradcam_heatmap(self, image_data, predicted_label, resize_target=None):
+        """
+        Generates a Grad-CAM heatmap.
+
+        Args:
+            image_data (Tensor): Input image tensor.
+            predicted_label (int): The predicted class label.
+            resize_target (tuple, optional): If provided, resizes the resulting heatmap to the specified spatial dimensions (Depth, Height, Width).
+
+        Returns:
+            np.ndarray: The Grad-CAM heatmap as a NumPy array.
+        """
+        classes = [ClassifierOutputTarget(predicted_label)]
+        heatmap = self._gradcam(input_tensor=image_data, targets=classes)
+        
+        if resize_target:
+            resize_transform = Resize(spatial_size=resize_target, mode='trilinear')
+            heatmap = resize_transform(heatmap)
+
+        return heatmap.numpy()
+
+
+    def _setup_occlusion(self):
+        self._occlusion = Occlusion(self._model)
+        
+
+    def _get_occlusion_attributions(self, image_data, predicted_label, resize_target=None):
+        """
+        Computes occlusion-based attribution maps to visualize which regions of the input image contributed most to the model's prediction.
+
+        Args:
+            image_data (Tensor): Input image tensor.
+            predicted_label (int): The predicted class label.
+            resize_target (tuple, optional): If provided, resizes the resulting attribution map to the specified spatial dimensions (Depth, Height, Width).
+
+        Returns:
+            np.ndarray: The occlusion attribution map as a NumPy array.
+        """
+        image_data = image_data.to(self._device)
+        sliding_window_shapes = (1, 64, 64, 64)  # (Channels, Depth, Height, Width)
+        strides = (1, 64, 64, 64)  # (Channels, Depth, Height, Width)
+        
+        attributions_occ = self._occlusion.attribute(
+            image_data,
+            target=predicted_label,
+            strides=strides,
+            sliding_window_shapes=sliding_window_shapes,
+            baselines=0
+        )
+        attributions_occ = attributions_occ.squeeze(0).cpu()
+
+        if resize_target:
+            resize_transform = Resize(spatial_size=resize_target, mode='trilinear')
+            attributions_occ = resize_transform(attributions_occ)
+
+        return attributions_occ.numpy() # remove batch dimension
+        
+
+
     def process(self):
         data_paths = find_dicom_directories(self._config['raw_mri_root_folder_path'])
         preprocessor = MRIPreprocessor(verbose=True) 
@@ -121,101 +191,48 @@ class P:
                 )
 
                 # Data ...
-                transform = get_transform_clean_tensor()
-                mri_tensor_cleaned = transform(processed_file_path)
+                clean_transform = get_transform_clean_tensor()
+                mri_tensor_cleaned = clean_transform(processed_file_path)
+                cleaned_mri_shape = tuple(mri_tensor_cleaned.shape)[1:] # cropped image dimensions without empty slices
 
                 resample_tensor_transform = get_transform_resample_tensor()
-                image_data = resample_tensor_transform(mri_tensor_cleaned).unsqueeze(0)
+                image_data = resample_tensor_transform(mri_tensor_cleaned)
 
-                self._classification(scan_id, image_data)
+                # Classification
+                image_data = image_data.unsqueeze(0) # add batch dimension
+                predicted_label = self._classification(scan_id, image_data)
 
                 # GradCam
-                # ...
+                heatmap = self._get_gradcam_heatmap(
+                    image_data=image_data, 
+                    predicted_label=predicted_label, 
+                    resize_target=cleaned_mri_shape
+                )
+                heatmap_file_path = os.sep.join([output_folder_path, f'{scan_id}_gradcam_heatmap.npy'])  
+                np.save(heatmap_file_path, heatmap)
 
+
+                # Occlusion
+                occlusion_att = self._get_occlusion_attributions(
+                    image_data=image_data, 
+                    predicted_label=predicted_label, 
+                    resize_target=cleaned_mri_shape
+                )
+                occlusion_att_file_path = os.sep.join([output_folder_path, f'{scan_id}_occlusion_att.npy'])  
+                np.save(occlusion_att_file_path, occlusion_att)
+                
             except Exception as e:
                 print(e)
             finally:
                 self._save_predicted()
 
-
+            
 
 def main(run_id:str, config_path:str):
-    q = P(run_id, config_path)
+    q = Pipeline(run_id, config_path)
     q.process()
             
-        
-
-
-        # Remove channel dimension if it's 1
-        # if mri_tensor.shape[0] == 1:
-        #     mri_tensor = mri_tensor.squeeze(0)  # Now shape is [D, H, W]
-
-        # # Convert to NumPy array
-        # mri_np = mri_tensor.numpy()
-
-        # # Get dimensions
-        # D, H, W = mri_np.shape
-
-        # # Initial slice indices
-        # init_axial = D // 2
-        # init_coronal = H // 2
-        # init_sagittal = W // 2
-
-        # Create figure and axes
-        # fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        # plt.subplots_adjust(bottom=0.25)
-
-        # # Display initial slices
-        # axial_im = axes[0].imshow(mri_np[init_axial, :, :], cmap='gray')
-        # axes[0].set_title(f'Axial Slice {init_axial}')
-        # axes[0].axis('off')
-
-        # coronal_im = axes[1].imshow(mri_np[:, init_coronal, :], cmap='gray')
-        # axes[1].set_title(f'Coronal Slice {init_coronal}')
-        # axes[1].axis('off')
-
-        # sagittal_im = axes[2].imshow(mri_np[:, :, init_sagittal], cmap='gray')
-        # axes[2].set_title(f'Sagittal Slice {init_sagittal}')
-        # axes[2].axis('off')
-
-        # # Define slider axes
-        # axcolor = 'lightgoldenrodyellow'
-        # axial_ax = plt.axes([0.15, 0.1, 0.65, 0.03], facecolor=axcolor)
-        # coronal_ax = plt.axes([0.15, 0.06, 0.65, 0.03], facecolor=axcolor)
-        # sagittal_ax = plt.axes([0.15, 0.02, 0.65, 0.03], facecolor=axcolor)
-
-        # # Create sliders
-        # axial_slider = Slider(axial_ax, 'Axial Slice', 0, D - 1, valinit=init_axial, valstep=1)
-        # coronal_slider = Slider(coronal_ax, 'Coronal Slice', 0, H - 1, valinit=init_coronal, valstep=1)
-        # sagittal_slider = Slider(sagittal_ax, 'Sagittal Slice', 0, W - 1, valinit=init_sagittal, valstep=1)
-
-        # # Update functions
-        # def update_axial(val):
-        #     idx = int(axial_slider.val)
-        #     axial_im.set_data(mri_np[idx, :, :])
-        #     axes[0].set_title(f'Axial Slice {idx}')
-        #     fig.canvas.draw_idle()
-
-        # def update_coronal(val):
-        #     idx = int(coronal_slider.val)
-        #     coronal_im.set_data(mri_np[:, idx, :])
-        #     axes[1].set_title(f'Coronal Slice {idx}')
-        #     fig.canvas.draw_idle()
-
-        # def update_sagittal(val):
-        #     idx = int(sagittal_slider.val)
-        #     sagittal_im.set_data(mri_np[:, :, idx])
-        #     axes[2].set_title(f'Sagittal Slice {idx}')
-        #     fig.canvas.draw_idle()
-
-        # # Connect sliders to update functions
-        # axial_slider.on_changed(update_axial)
-        # coronal_slider.on_changed(update_coronal)
-        # sagittal_slider.on_changed(update_sagittal)
-
-        # plt.show()
-
-        
+    
 if __name__ == '__main__': 
     parser = argparse.ArgumentParser()
     parser.add_argument('--run_id', type=str, required=True)

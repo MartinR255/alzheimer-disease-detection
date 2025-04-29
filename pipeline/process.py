@@ -183,7 +183,7 @@ class MRIPreprocessor:
         return self._mri_image.numpy()
 
     
-    def image_from(self, data:np.ndarray) -> None:
+    def image_from(self, data:np.ndarray):
         """
         Creates new ANTs image with the same header but with different image data
 
