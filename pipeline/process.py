@@ -8,7 +8,6 @@ import antspynet.utilities as aspyputil
 import dicom2nifti
 
 
-
 class MRIPreprocessor:
     
     def __init__(self, verbose=False):
@@ -42,7 +41,7 @@ class MRIPreprocessor:
         """
         self.logger.debug(f'Loading MRI data from {file_path}')
         self._mri_image = ants.image_read(file_path)
-        
+
         return self
 
 
@@ -61,14 +60,15 @@ class MRIPreprocessor:
         return self
     
 
-    def dicom_to_nifti(self, dicom_folder_path:str, output_file_path:str):
+    def dicom_to_nifti(self, dicom_folder_path:str, output_file_path:str, orientation:str = None):
         """
         Convert the DICOM series to a NIfTI file with the specified name
         """
         self.logger.debug(f'Converting DICOM series to NIfTI: {output_file_path}')
-        dicom2nifti.dicom_series_to_nifti(dicom_folder_path, output_file_path, reorient_nifti=True)
 
-        return self.load_mri(output_file_path)
+        dicom2nifti.dicom_series_to_nifti(dicom_folder_path, output_file=output_file_path, reorient_nifti=False)
+       
+        return self
         
 
     def resample_volume(self, target_shape:tuple = (1, 1, 1)):
@@ -112,39 +112,10 @@ class MRIPreprocessor:
         return self
 
 
-    def zscore_normalization(self):
-        """Perform z-score normalization on the brain voxels within the mask.
-
-        The normalization is applied only to voxels within the brain mask,
-        transforming them to have zero mean and unit standard deviation.
-
-        Returns:
-            MRIPreprocessor: The preprocessor instance for method chaining.
-        """
-        if self._mri_mask is None:
-            self.logger.debug("Mask is None, skipping z-score normalization")
-            return self
-        
-        self.logger.debug("Performing z-score normalization")
-        mri_image = self._mri_image.numpy()
-        mri_mask = self._mri_mask.numpy()
-        brain_voxels = mri_image[mri_mask > 0]
-        mean_intensity = np.mean(brain_voxels)
-        std_intensity = np.std(brain_voxels)
-
-        normalized_data = np.zeros_like(mri_image, dtype=np.float32)
-       
-        # Apply normalization within the brain mask
-        normalized_data[mri_mask > 0] = (brain_voxels - mean_intensity) / std_intensity
-        
-        self._mri_image.new_image_like(normalized_data)
-
-        return self
-    
-
-    def reorient_image(self, orientation:str='RAS'):
+    def reorient_image(self, orientation:str='LAS'):
         self.logger.debug(f'Reorienting MRI image to {orientation} orientation')
-        self._mri_image = ants.reorient_image2(self._mri_image, orientation=orientation)
+       
+        self._mri_image = ants.reorient_image2(image=self._mri_image, orientation=orientation)
 
         if self._mri_mask:
             self._mri_mask = ants.reorient_image2(self._mri_mask, orientation=orientation)
@@ -184,7 +155,7 @@ class MRIPreprocessor:
             (probability, saltValue, pepperValue)
         )
         return self
-
+    
 
     def save_mri(self, mri_output_path: str, mask_output_path:str=None):
         """Save the preprocessed MRI image to a file.
@@ -202,5 +173,26 @@ class MRIPreprocessor:
             self.logger.debug(f'Saving mask of preprocessed image to {mask_output_path}')
             ants.image_write(self._mri_mask, mask_output_path)
 
+        return self
+    
+    
+    def get_image(self):
+        """
+        Returns the image data from ANTs image(ants_image.numpy()).
+        """
+        return self._mri_image.numpy()
+
+    
+    def image_from(self, data:np.ndarray):
+        """
+        Creates new ANTs image with the same header but with different image data
+
+        Args:
+            data (np.ndarray): Path where the processed image will be saved.
+
+        Returns:
+            MRIPreprocessor: The preprocessor instance for method chaining.
+        """
+        self._mri = ants.new_image_like(self._mri_image, data)
         return self
     
