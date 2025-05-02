@@ -1,8 +1,15 @@
-import SimpleITK as sitk
+import os
 import numpy as np
+
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+import torch
+from torchvision.transforms import Normalize, ToTensor
+from monai.transforms import ScaleIntensity
+
+import ants
 class Dashboard:
 
     def __init__(self):
@@ -13,14 +20,11 @@ class Dashboard:
         self._update_slicers_functions = []
 
 
-    def _load_iamge(self, file_path):
-        sitk_image = sitk.ReadImage(file_path)
-        mri_image = sitk.GetArrayFromImage(sitk_image) 
-
-        if mri_image.shape[0] == 1:
-            mri_image = mri_image.squeeze(0)
-
-        return mri_image
+    def _load_image(self, file_path):
+        mri_image = ants.image_read(file_path).numpy()
+        mri_image = np.expand_dims(mri_image, axis=0)
+        print(mri_image.shape)
+        return self._normalize(mri_image)
         
 
     def _create_window(self):
@@ -29,35 +33,115 @@ class Dashboard:
 
 
     def _load_images(self, mri_file_path, grad_cam_file_path, occlusion_attr_file_path):
-        mri_image = self._load_iamge(mri_file_path)
-        grad_cam_image = self._get_gradcam_image(mri_image, grad_cam_file_path)
-        occlusion_image = self._get_occlusion_image(mri_image, occlusion_attr_file_path)
-        self._images = [mri_image, grad_cam_image, occlusion_image]
+        mri_image = self._load_image(mri_file_path)
+        # grad_cam_image = self._get_gradcam_image(mri_image, grad_cam_file_path)
+        # occlusion_image = self._get_occlusion_image(mri_image, occlusion_attr_file_path)
+
+        mri_image = np.rot90(mri_image, k=1, axes=(3, 2))
+        # grad_cam_image = np.rot90(grad_cam_image, k=1, axes=(3, 2))
+        # occlusion_image = np.rot90(occlusion_image, k=1, axes=(3, 2))
+        return mri_image, mri_image, mri_image #mri_image, grad_cam_image, occlusion_image
+
+
+    def _overlay_images(self, image, overlay_image):
+        """
+        
+        """
+        image = np.squeeze(image) # shape [D, H, W]
+        overlay_image = np.squeeze(overlay_image) # shape [D, H, W]
+
+        alpha = 0.7
+        overlay_slices = []
+        for slice_idx in range(image.shape[0]):
+            slice_img = image[slice_idx] # [H,W]
+            slice_occ = overlay_image[slice_idx] # [H,W]
+
+            # Create a red-only heatmap: stack zeros for G,B, and slice_occ for R
+            heatmap_red = np.zeros((slice_occ.shape[0], slice_occ.shape[1], 3), dtype=np.float32)
+            heatmap_red[..., 0] = slice_occ           # Red channel
+
+            # Replicate MRI into RGB as grayscale base
+            gray_rgb = np.stack([slice_img]*3, axis=-1)  # [H, W, 3]
+
+            # Blend: base*(1-α) + heatmap*α
+            overlay = (1 - alpha) * gray_rgb + heatmap_red * alpha
+            overlay_slices.append(overlay)
+
+        overlay_image = np.stack(overlay_slices, axis=0)
+        return overlay_image
 
 
     def _get_gradcam_image(self, mri_image, heatmap_path):
-        return mri_image
+        """
+        Overlay GradCAM heatmap on a 3D MRI image.
+
+        Args:
+            mri_image (torch.Tensor or np.ndarray): The MRI scan, shape [1, D, H, W]
+            heatmap_path (str): Path to .npy file containing heatmap with shape [1, D, H, W]
+
+        Returns:
+            np.ndarray: Overlaid image slices, shape [D, H, W, 3]
+        """
+        gradcam_image = self._load_image(heatmap_path)
+        return self._overlay_images(image=mri_image, overlay_image=gradcam_image)
+
 
 
     def _get_occlusion_image(self, mri_image, occlusion_attr_path):
-        return mri_image
+        """
+        Overlay occlusion attr on a 3D MRI image.
+
+        Args:
+            mri_image (torch.Tensor or np.ndarray): The MRI scan, shape [1, D, H, W]
+            occlusion_attr_path (str): Path to .npy file containing occlusion_attr with shape [1, D, H, W]
+
+        Returns:
+            np.ndarray: Overlaid image slices, shape [D, H, W, 3]
+        """
+        occlusion_attr = self._load_image(occlusion_attr_path)
+        occlusion_attr = np.clip(occlusion_attr, a_min=0, a_max=None)
+        return self._overlay_images(image=mri_image, overlay_image=occlusion_attr)
+   
+    
+    def _normalize(self, image):
+        """
+        Normalizes data and scales intensity to range [0, 1]
+        """
+        to_tensor_transform = ToTensor()
+        tensor_image = to_tensor_transform(image.squeeze(0))
+        
+        mean, std = tensor_image.mean(), tensor_image.std()
+        normalize_transform = Normalize(mean=mean, std=std)
+        normalized_image = normalize_transform(tensor_image)
+
+        scaler = ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16)
+        scaled_image = scaler(normalized_image)
+
+        scaled_image = scaled_image.unsqueeze(0)
+        return scaled_image.numpy()
 
 
     def build_dashboard(self, mri_file_path, grad_cam_file_path, occlusion_attr_file_path):
         self._create_window()
-        self._load_images(mri_file_path, grad_cam_file_path, occlusion_attr_file_path)
+        mri_image, grad_cam_image, occlusion_image = self._load_images(mri_file_path, grad_cam_file_path, occlusion_attr_file_path)
         
-        mri_image = self._images[0]
+        mri_image = mri_image.squeeze(0)
         D, H, W = mri_image.shape  
-
         init_axial = D // 2
         init_coronal = H // 2
         init_sagittal = W // 2  
         init_slices = [init_axial, init_coronal, init_sagittal]
+        
+        grad_cam_image = mri_image
+        occlusion_image = mri_image
+
+        self._images = [mri_image, grad_cam_image, occlusion_image]
 
         # Init mri image slices
-        for row, image in enumerate(self._images):
-            self._init_mri_slices(image, row, init_slices)
+        self._init_mri_slices_grayscale(mri_image, 0, init_slices)
+        self._init_mri_slices_grayscale(grad_cam_image, 1, init_slices)
+        self._init_mri_slices_grayscale(occlusion_image, 2, init_slices)
+        
 
         # Bind sliders to update function on change
         self._init_sliders(mri_image.shape, init_slices)
@@ -66,15 +150,17 @@ class Dashboard:
         plt.show()
 
 
-    def _init_mri_slices(self, image, row, init_slices):
+    def _init_mri_slices_grayscale(self, image, row, init_slices):
         init_axial, init_coronal, init_sagittal = init_slices
-    
-        axial_im = self._axes[row][0].imshow(image[init_axial, :, :], cmap='gray')
+
+        axial_im = self._axes[row][0].imshow(image[init_axial, :, :], cmap='gray')     
         self._axes[row][0].set_title(f'Axial Slice {init_axial}')
         self._axes[row][0].axis('off') 
+        
         coronal_im = self._axes[row][1].imshow(image[:, init_coronal, :], cmap='gray')
         self._axes[row][1].set_title(f'Coronal Slice {init_coronal}')
         self._axes[row][1].axis('off') 
+        
         sagittal_im = self._axes[row][2].imshow(image[:, :, init_sagittal], cmap='gray')
         self._axes[row][2].set_title(f'Sagittal Slice {init_sagittal}')
         self._axes[row][2].axis('off')
@@ -106,17 +192,38 @@ class Dashboard:
     def _update_axial(self, val):
         axial_slider = self._sliders[0]
         idx = int(axial_slider.val)
-        for ax_idx, slice_ax in enumerate(self._axial_slices):
-            slice_ax.set_data(self._images[0][idx, :, :])
-            self._axes[ax_idx][0].set_title(f'Axial Slice {idx}')
+        # for ax_idx, slice_ax in enumerate(self._axial_slices):
+
+        # self._axial_slices[0].set_data(self._images[0][idx, :, :])
+        # self._axes[0][0].set_title(f'Axial Slice {idx}')
+
+        # self._axial_slices[1].set_data(self._images[1][idx, :, :])
+        # self._axes[1][0].set_title(f'Axial Slice {idx}')
+
+        # self._axial_slices[2].set_data(self._images[2][idx, :, :])
+        # self._axes[2][0].set_title(f'Axial Slice {idx}')
+
+        for ax_idx, slice_cor in enumerate(self._axial_slices):
+            slice_cor.set_data(self._images[ax_idx][idx, :, :])
+            self._axes[ax_idx][0].set_title(f'Coronal Slice {idx}')
         self._fig.canvas.draw_idle()  
 
 
     def _update_coronal(self, val):
         coronal_slider = self._sliders[1]
         idx = int(coronal_slider.val)
+
+        # self._coronal_slices[0].set_data(self._images[0][:, idx, :])
+        # self._axes[0][1].set_title(f'Axial Slice {idx}')
+
+        # self._coronal_slices[1].set_data(self._images[1][:, idx, :])
+        # self._axes[1][1].set_title(f'Axial Slice {idx}')
+
+        # self._coronal_slices[2].set_data(self._images[2][:, idx, :])
+        # self._axes[2][1].set_title(f'Axial Slice {idx}')
+
         for ax_idx, slice_cor in enumerate(self._coronal_slices):
-            slice_cor.set_data(self._images[1][:, idx, :])
+            slice_cor.set_data(self._images[ax_idx][:, idx, :])
             self._axes[ax_idx][1].set_title(f'Coronal Slice {idx}')
         self._fig.canvas.draw_idle()  
 
@@ -124,8 +231,18 @@ class Dashboard:
     def _update_sagittal(self, val):
         sagittal_slider = self._sliders[2]
         idx = int(sagittal_slider.val)
+    
+        # self._saggital_slices[0].set_data(self._images[0][:, :, idx])
+        # self._axes[0][2].set_title(f'Axial Slice {idx}')
+
+        # self._saggital_slices[1].set_data(self._images[1][:, :, idx])
+        # self._axes[1][2].set_title(f'Axial Slice {idx}')
+
+        # self._saggital_slices[2].set_data(self._images[2][:, :, idx])
+        # self._axes[2][2].set_title(f'Axial Slice {idx}')
+
         for ax_idx, slice_sgg in enumerate(self._saggital_slices):
-            slice_sgg.set_data(self._images[2][:, :, idx])
+            slice_sgg.set_data(self._images[ax_idx][:, :, idx])
             self._axes[ax_idx][2].set_title(f'Sagittal Slice {idx}')
         self._fig.canvas.draw_idle()  
 
