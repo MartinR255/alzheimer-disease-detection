@@ -72,25 +72,20 @@ def get_transform_clean_tensor() -> Compose:
     Creates a transformation pipeline for image preprocessing before feeding to the model.
     """
     def select_fn(x):
-        return x > -1
+        return x > 0
     
     data_transform = Compose(
         [
             LoadImage(reader="monai.data.ITKReader"),
             EnsureChannelFirst(),
-            Orientation(axcodes="RAS"),
-            ScaleIntensity(minv=-1, maxv=1.0, dtype=torch.float16), 
-            Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
+            ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16), 
+            # Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
             
             CropForeground(
                 select_fn=select_fn,
                 allow_smaller=False,
                 margin=0,
-            ),
-            # SpatialPad(
-            #     spatial_size=(184, 184, 184),  
-            #     value=-1.0
-            # ),
+            )
         ]
     )
 

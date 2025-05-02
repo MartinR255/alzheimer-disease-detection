@@ -24,8 +24,7 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 from monai.transforms import Resize
-
-
+import ants
 
 class Pipeline:
 
@@ -71,16 +70,11 @@ class Pipeline:
                 processed_file_mask_path:str
             ):
         try:
-            # preprocessor.dicom_to_nifti(folder_path, nifti_file_path) \
-            # .load_mri(nifti_file_path) \
-            # .reorient_image('LAS') \
-            # .skull_strip() \
-            # .register_to_mni(self._mni_template, 'Affine') \
-            # .save_mri(processed_file_path, processed_file_mask_path)
             preprocessor.dicom_to_nifti(folder_path, nifti_file_path) \
             .load_mri(nifti_file_path) \
-            .register_to_mni(self._mni_template, 'SyN') \
+            .reorient_image('LAS') \
             .skull_strip() \
+            .register_to_mni(self._mni_template, 'Affine') \
             .save_mri(processed_file_path, processed_file_mask_path)
         except Exception as e:
             print(f'Error processing {folder_path}: {e}')
@@ -166,6 +160,19 @@ class Pipeline:
         return attributions_occ.numpy() # remove batch dimension
         
 
+    def _save_image(self, image, spacing, origin, direction, path):
+        """
+        Creates and saves new ants image with provided spacing, origin, direction to specified path.
+        """
+        ants_img = ants.from_numpy(
+            image,
+            origin=origin,
+            spacing=spacing,
+            direction=direction,
+            has_components=False
+        )
+        ants.image_write(ants_img, path)
+
 
     def process(self):
         data_paths = find_dicom_directories(self._config['raw_mri_root_folder_path'])
@@ -177,7 +184,7 @@ class Pipeline:
                 os.makedirs(output_folder_path, exist_ok=True)
 
                 nifti_file_path = os.sep.join([output_folder_path, f'{scan_id}.nii.gz'])
-                processed_file_path = os.sep.join([output_folder_path, f'{scan_id}_processed.nii.gz'])  
+                processed_file_path = os.sep.join([output_folder_path, f'{scan_id}_clean.nii.gz'])  
                 processed_file_mask_path = None
                 if self._save_brain_mask:
                     processed_file_mask_path = os.sep.join([output_folder_path, f'{scan_id}_mask.nii.gz'])
@@ -197,20 +204,27 @@ class Pipeline:
 
                 resample_tensor_transform = get_transform_resample_tensor()
                 image_data = resample_tensor_transform(mri_tensor_cleaned)
+               
 
                 # Classification
                 image_data = image_data.unsqueeze(0) # add batch dimension
                 predicted_label = self._classification(scan_id, image_data)
 
+
+                # Get orientation data from preprocessed image
+                spacing = preprocessor._mri_image.spacing
+                origin = preprocessor._mri_image.origin
+                direction = preprocessor._mri_image.direction
+
+               
                 # GradCam
                 heatmap = self._get_gradcam_heatmap(
                     image_data=image_data, 
                     predicted_label=predicted_label, 
                     resize_target=cleaned_mri_shape
                 )
-                heatmap_file_path = os.sep.join([output_folder_path, f'{scan_id}_gradcam_heatmap.npy'])  
-                np.save(heatmap_file_path, heatmap)
-
+                heatmap_file_path = os.sep.join([output_folder_path, f'{scan_id}_gradcam_heatmap.nii.gz']) 
+                self._save_image(heatmap, spacing, origin, direction, heatmap_file_path) 
 
                 # Occlusion
                 occlusion_att = self._get_occlusion_attributions(
@@ -218,8 +232,15 @@ class Pipeline:
                     predicted_label=predicted_label, 
                     resize_target=cleaned_mri_shape
                 )
-                occlusion_att_file_path = os.sep.join([output_folder_path, f'{scan_id}_occlusion_att.npy'])  
-                np.save(occlusion_att_file_path, occlusion_att)
+                occlusion_att_file_path = os.sep.join([output_folder_path, f'{scan_id}_occlusion_att.nii.gz'])  
+                self._save_image(occlusion_att, spacing, origin, direction, occlusion_att_file_path)
+
+
+                # Resample and save original image from net
+                resize_transform = Resize(spatial_size=cleaned_mri_shape, mode='trilinear')
+                image_data_resampled = resize_transform(image_data.squeeze(0)).numpy()
+                processed_file_path = os.sep.join([output_folder_path, f'{scan_id}_processed.nii.gz'])  
+                self._save_image(image_data_resampled, spacing, origin, direction, processed_file_path) 
                 
             except Exception as e:
                 print(e)
@@ -227,7 +248,6 @@ class Pipeline:
                 self._save_predicted()
 
             
-
 def main(run_id:str, config_path:str):
     q = Pipeline(run_id, config_path)
     q.process()
