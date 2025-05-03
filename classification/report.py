@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import pandas as pd
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -148,8 +149,7 @@ class Report:
         file_path = os.sep.join([self._root_path, 'confusion_matrices', file_name]) 
         conf_matrix = multiclass_confusion_matrix(predicted_labels, ground_truth_labels, self._num_classes)
         conf_matrix_array = conf_matrix.cpu().numpy()
-        df = pd.DataFrame(conf_matrix_array)
-        df.to_csv(file_path, index=True)
+        np.save(file_path, conf_matrix_array)
         
         
     

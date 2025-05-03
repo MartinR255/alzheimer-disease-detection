@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -13,31 +14,35 @@ from monai.networks.nets import (
 
 
 def get_pretrained_resnet18(spatial_dims:int, n_input_channels:int, num_classes:int) -> torch.nn.Module:
-    return resnet18(
+    model = resnet18(
         spatial_dims=spatial_dims, 
         n_input_channels=n_input_channels, 
         num_classes=num_classes, 
         pretrained=True, 
         feed_forward=False, 
-        shortcut_type='B', 
-        bias_downsample=False
+        shortcut_type='A', 
+        bias_downsample=True
     )
+    model.fc = nn.Linear(in_features=512, out_features=num_classes, bias=True)
+    return model
 
 
 def get_pretrained_resnet34(spatial_dims:int, n_input_channels:int, num_classes:int) -> torch.nn.Module:
-    return resnet34(
+    model = resnet34(
         spatial_dims=spatial_dims, 
         n_input_channels=n_input_channels, 
         num_classes=num_classes, 
         pretrained=True, 
         feed_forward=False, 
-        shortcut_type='B', 
-        bias_downsample=False
+        shortcut_type='A', 
+        bias_downsample=True
     )
+    model.fc = nn.Linear(in_features=512, out_features=num_classes, bias=True)
+    return model
 
 
 def get_pretrained_resnet50(spatial_dims:int, n_input_channels:int, num_classes:int) -> torch.nn.Module:
-    return resnet50(
+    model = resnet50(
         spatial_dims=spatial_dims, 
         n_input_channels=n_input_channels, 
         num_classes=num_classes, 
@@ -46,10 +51,12 @@ def get_pretrained_resnet50(spatial_dims:int, n_input_channels:int, num_classes:
         shortcut_type='B', 
         bias_downsample=False
     )
+    model.fc = nn.Linear(in_features=2048, out_features=num_classes, bias=True)
+    return model
 
 
 def get_pretrained_resnet101(spatial_dims:int, n_input_channels:int, num_classes:int) -> torch.nn.Module:
-    return resnet101(
+    model = resnet101(
         spatial_dims=spatial_dims, 
         n_input_channels=n_input_channels, 
         num_classes=num_classes, 
@@ -58,6 +65,8 @@ def get_pretrained_resnet101(spatial_dims:int, n_input_channels:int, num_classes
         shortcut_type='B', 
         bias_downsample=False
     )
+    model.fc = nn.Linear(in_features=2048, out_features=num_classes, bias=True)
+    return model
 
 
 def add_dropout_relu(model:torch.nn.Module, dropout_rate:float) -> torch.nn.Module:
@@ -116,10 +125,10 @@ def get_resnet_model(params:dict) -> torch.nn.Module:
         num_classes=params['num_classes']
     )
     
-    if params['dropout_rate_relu']:
+    if pd.isna(params['dropout_rate_relu']) is False:
         add_dropout_relu(model, params['dropout_rate_relu'])
 
-    if params['dropout_rate_fc']:
+    if pd.isna(params['dropout_rate_fc']) is False:
         add_dropout_fc(model, params['dropout_rate_fc'])
 
     return model

@@ -157,7 +157,6 @@ class Trainer():
                 self._save_model(epoch, self._best_metric)
 
        
-
     def _save_model(self, epoch_val:int, best_metric:float) -> None:
         checkpoint = {
             'model_state_dict': self._model.state_dict(),
