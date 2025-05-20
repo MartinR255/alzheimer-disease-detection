@@ -39,10 +39,10 @@ class Report:
                 - 'f1_score': MulticlassF1Score
                 - 'auroc': MulticlassAUROC
         """
-        accuracy = MulticlassAccuracy(num_classes=self._num_classes, average='macro')
-        precision = MulticlassPrecision(num_classes=self._num_classes, average='weighted')
-        recall = MulticlassRecall(num_classes=self._num_classes, average='weighted')
-        f1_score = MulticlassF1Score(num_classes=self._num_classes, average='weighted')
+        accuracy = MulticlassAccuracy(num_classes=self._num_classes, average='micro')
+        precision = MulticlassPrecision(num_classes=self._num_classes, average='macro')
+        recall = MulticlassRecall(num_classes=self._num_classes, average='macro')
+        f1_score = MulticlassF1Score(num_classes=self._num_classes, average='macro')
         auroc = MulticlassAUROC(num_classes=self._num_classes, average='macro')
 
         return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1_score': f1_score, 'auroc': auroc}

@@ -68,7 +68,7 @@ class Tester():
             metrics_values['f1_score'], 
             metrics_values['auroc']
         ])
-        self._report.save_confusion_matrix(predicted_labels, ground_truth_labels, f'conf_mat_{run_id}.npy')
+        self._report.save_confusion_matrix(predicted_labels, ground_truth_labels, f'conf_mat_{run_id}_{epoch}.npy')
 
 
     def _load_model(self, model_path:str) -> None:

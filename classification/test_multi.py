@@ -69,7 +69,6 @@ def main(data_config:str, train_params:str, models_folder:str):
     for _, group_df in grouped:
         for _, row in group_df.iterrows():
             row_data = row.to_dict()
-            
             test_models(data_config, models_paths, row_data)
             
 

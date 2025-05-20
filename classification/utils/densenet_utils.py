@@ -26,9 +26,6 @@ def get_densenet_model(params:dict) -> torch.nn.Module:
     Returns:
         torch.nn.Module: DenseNet model instance.
     """
-    if params['pretrained']:
-        raise NotImplementedError("Pretrained DenseNet models are currently not implemented.")
-    
     return densenet_models[params['name']](
         spatial_dims=params['spatial_dims'], 
         in_channels=params['n_input_channels'], 
