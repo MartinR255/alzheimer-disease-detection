@@ -123,15 +123,19 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     Save data about traning
     """
     report.create_table('Training_parameters', [
-        'ID', 'Epoch Number', 'Training Data Size', 'Validation Data Size', 
-        'Batch Size', 'Num Classes', 'Network Type', 'Optimizer', 'Learning Rate', 
-        'Weight Decay', 'Loss Function', 'Validation Interval', 'Training Duration (seconds)'
+        'ID', 'Epoch Number', 'Training Data Size', 'Validation Data Size', 'Batch Size', 
+        'Num Classes', 'Spatial Dims', 'Input Channels', 'Network Type', 
+        'Optimizer', 'Learning Rate', 'Weight Decay', 
+        'Dropout Rate fc', 'Dropout Rate relu', 
+        'Loss Function', 'Validation Interval', 'Training Duration (seconds)'
     ], train_params_path)
 
     training_duration = end_train_time - start_train_time 
     report.add_row('Training_parameters', [
-        run_id, num_epochs, len(train_ds), len(val_ds), batch_size, num_classes,
-        model_name, optimizer_name, learning_rate, weight_decay, 
+        run_id, num_epochs, len(train_ds), len(val_ds), batch_size, 
+        num_classes, train_config['model']['spatial_dims'], train_config['model']['n_input_channels'], model_name, 
+        optimizer_name, learning_rate, weight_decay, 
+        train_config['model']['dropout_rate_fc'], train_config['model']['dropout_rate_relu'],
         loss_function_name, validation_interval, training_duration.total_seconds()
     ])
 

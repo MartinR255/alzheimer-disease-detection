@@ -8,22 +8,16 @@ from pydicom.misc import is_dicom
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
+from torchvision.transforms import Normalize
 from monai.transforms import (
     Compose, 
     LoadImage, 
     Resize, 
     ScaleIntensity, 
     EnsureChannelFirst, 
-    Orientation, 
-    Spacing, 
-    RandFlip, 
-    RandGaussianNoise, 
-    RandAdjustContrast, 
     CropForeground,
-    SpatialPad, 
-    ScaleIntensity, 
-    RandShiftIntensity,
-    ToTensor
+    ScaleIntensity,
+    Spacing
 )
 
 
@@ -56,7 +50,7 @@ def del_file(file_path:str, logger):
         logger.error(f"Error deleting file {file_path}: {e.strerror}")
 
 
-def load_model(model, model_path:str) -> None:
+def load_model(model, model_path:str) -> torch.nn.Module:
     checkpoint = torch.load(model_path)
     if isinstance(checkpoint, dict):
         if 'model_state_dict' in checkpoint:
@@ -78,9 +72,8 @@ def get_transform_clean_tensor() -> Compose:
         [
             LoadImage(reader="monai.data.ITKReader"),
             EnsureChannelFirst(),
+            Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
             ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16), 
-            # Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
-            
             CropForeground(
                 select_fn=select_fn,
                 allow_smaller=False,
@@ -88,15 +81,15 @@ def get_transform_clean_tensor() -> Compose:
             )
         ]
     )
-
     return data_transform
 
 
-def get_transform_resample_tensor():
+def get_transform_resample_tensor() -> Compose:
     data_transform = Compose(
         [   
             Resize(spatial_size=(128, 128, 128)),
-            ScaleIntensity(minv=-1, maxv=1.0, dtype=torch.float32)
+            Normalize(mean=84.28270578018392, std=250.33769250046794),
+            ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float32)
         ]
     )
 

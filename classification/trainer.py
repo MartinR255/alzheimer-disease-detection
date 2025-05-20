@@ -12,19 +12,18 @@ from monai.data import DataLoader
 
 
 
-
 class Trainer():
 
     def __init__(self, 
-                model:monai.networks.nets, 
-                optimizer:torch.optim.Optimizer, 
-                loss_function:torch.nn.Module, 
-                train_data:DataLoader, 
-                validation_data:DataLoader, 
-                validation_interval:int,
-                device:torch.device,
-                save_model_path:str,
-                report: Report     
+        model:monai.networks.nets, 
+        optimizer:torch.optim.Optimizer, 
+        loss_function:torch.nn.Module, 
+        train_data:DataLoader, 
+        validation_data:DataLoader, 
+        validation_interval:int,
+        device:torch.device,
+        save_model_path:str,
+        report: Report     
     ) -> None: 
         self._model = model
         self._optimizer = optimizer
@@ -157,7 +156,6 @@ class Trainer():
                 self._save_model(epoch, self._best_metric)
 
        
-
     def _save_model(self, epoch_val:int, best_metric:float) -> None:
         checkpoint = {
             'model_state_dict': self._model.state_dict(),

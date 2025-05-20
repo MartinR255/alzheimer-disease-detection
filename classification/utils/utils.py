@@ -6,15 +6,7 @@ import numpy as np
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
-from monai.networks.nets import (
-    resnet18, 
-    resnet34, 
-    resnet50, 
-    resnet101, 
-    densenet121, 
-    densenet169, 
-    densenet201
-)
+from torchvision.transforms import Normalize
 
 from torch.nn import Parameter
 from memory_dataset import MemoryDataset
@@ -28,18 +20,10 @@ from monai.transforms import (
     Resize, 
     ScaleIntensity, 
     EnsureChannelFirst, 
-    Orientation, 
     Spacing, 
-    RandFlip, 
-    RandGaussianNoise, 
-    RandAdjustContrast, 
     CropForeground,
-    SpatialPad, 
-    ScaleIntensity, 
-    RandShiftIntensity,
-    ToTensor
+    ScaleIntensity
 )
-
 
 from sklearn.model_selection import train_test_split
 
@@ -54,6 +38,7 @@ __all__ = [
     'get_optimizer',
     'get_loss'
 ]
+
 
 
 def load_data(image_dataset_path: str, dataset_partiton_path: str) -> tuple:
@@ -83,30 +68,24 @@ def get_transform() -> Compose:
     Creates a transformation pipeline for image preprocessing before feeding to the model.
     """
     def select_fn(x):
-        return x > -1
+        return x > 0
      
     data_transform = Compose(
         [
-            LoadImage(),
+            LoadImage(reader="monai.data.ITKReader"),
             EnsureChannelFirst(),
-            Orientation(axcodes="RAS"),
-            ScaleIntensity(minv=-1, maxv=1.0, dtype=torch.float16), # dtype=torch.float16 
             Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
-            
+            ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16),
             CropForeground(
                 select_fn=select_fn,
                 allow_smaller=False,
                 margin=0,
             ),
-            # SpatialPad(
-            #     spatial_size=(184, 184, 184),  
-            #     value=-1.0
-            # ),
             Resize(spatial_size=(128, 128, 128)),
-            ToTensor(dtype=torch.float16)
+            Normalize(mean=84.28270578018392, std=250.33769250046794),
+            ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16)
         ]
     )
-
     return data_transform
 
 
