@@ -142,10 +142,10 @@ def get_resnet_model(params:dict) -> torch.nn.Module:
         num_classes=params['num_classes']
     )
     
-    if pd.isna(params['dropout_rate_relu']) is False:
+    if params['dropout_rate_relu'] is not None:
         add_dropout_relu(model, params['dropout_rate_relu'])
 
-    if pd.isna(params['dropout_rate_fc']) is False:
+    if params['dropout_rate_fc'] is not None:
         add_dropout_fc(model, params['dropout_rate_fc'])
 
     return model

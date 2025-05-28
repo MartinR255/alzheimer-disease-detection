@@ -7,7 +7,6 @@ import pandas as pd
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
-from torchvision.transforms import Normalize
 
 from torch.nn import Parameter
 from memory_dataset import MemoryDataset
@@ -16,20 +15,40 @@ from monai.losses import FocalLoss
 
 from typing import Iterable
 
+from .intensity_normalization import IntensityNormalization
 from monai.transforms import (
     Compose, 
     LoadImage, 
     Resize, 
-    ScaleIntensity, 
     EnsureChannelFirst, 
-    Spacing, 
     CropForeground,
-    ScaleIntensity
+    ToTensor
 )
 
 from sklearn.model_selection import train_test_split
+from .resnet_utils import get_resnet_model
+from .densenet_utils import get_densenet_model
+resnets = [
+    'resnet10',
+    'resnet18',
+    'resnet34',
+    'resnet50',
+    'resnet101',
+    'resnet10p',
+    'resnet18p',
+    'resnet34p',
+    'resnet50p',
+    'resnet101p'
+]
+densenets = [
+    'densenet121',
+    'densenet169',
+    'densenet201'
+]
+
 
 __all__ = [
+    'make_file_dir',
     'copy_config',
     'load_data',
     'get_transform',
@@ -42,12 +61,14 @@ __all__ = [
     'get_loss'
 ]
 
+def make_file_dir(file_path:str):
+    folder_path = os.path.dirname(file_path)
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
 
 
 def copy_config(file_path:str, new_file_path:str):
-    folder_path = os.path.dirname(new_file_path)
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
+    make_file_dir(new_file_path)
 
     data = load_yaml_config(file_path)
     with open(new_file_path, 'w') as file:
@@ -81,25 +102,30 @@ def get_transform() -> Compose:
     Creates a transformation pipeline for image preprocessing before feeding to the model.
     """
     def select_fn(x):
-        return x > 0
-     
-    data_transform = Compose(
-        [
+        return x > 0.00001
+    
+    data_transform = [
             LoadImage(reader="monai.data.ITKReader"),
             EnsureChannelFirst(),
-            Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
-            ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16),
             CropForeground(
                 select_fn=select_fn,
                 allow_smaller=False,
                 margin=0,
             ),
+            IntensityNormalization(clip_ratio=99.5),
+            # ScaleIntensityRange(
+            #     a_min=1.401298464324817e-45,
+            #     a_max=1697.13525390625,
+            #     b_min=0.0,
+            #     b_max=1.0,
+            #     clip=True,
+            #     dtype=torch.float16
+            # ),
             Resize(spatial_size=(128, 128, 128)),
-            Normalize(mean=84.28270578018392, std=250.33769250046794),
-            ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16)
-        ]
-    )
-    return data_transform
+            ToTensor(dtype=torch.float16)
+    ]
+
+    return Compose(data_transform)
 
 
 def get_memory_dataset(dataset_path:str = None) -> MemoryDataset:
@@ -250,8 +276,9 @@ def get_optimizer(model_params:Iterable[Parameter], params:dict) -> torch.optim.
 Loss functions
 """
 def get_cross_entropy_loss(params:dict, device) -> torch.nn.CrossEntropyLoss:
+    weight = params['weight']
     if params['weight'] is not None:
-        weight = torch.tensor(params['weights'], dtype=torch.float).to(device)
+        weight = torch.tensor(weight, dtype=torch.float).to(device)
 
     reduction = params['reduction'] if params['reduction'] is not None else 'mean'
     label_smoothing = params['label_smoothing'] if params['label_smoothing'] is not None else 0.0
@@ -278,7 +305,7 @@ def get_focal_loss(params:dict, device):
 
 loss_functions ={
     'cross_entropy_loss': get_cross_entropy_loss,
-    'focal_loss': get_cross_entropy_loss,
+    'focal_loss': get_focal_loss,
 }
 
 def get_loss(params:dict, device) -> torch.nn.Module:
@@ -293,3 +320,12 @@ def get_loss(params:dict, device) -> torch.nn.Module:
     
     return loss_function(params, device)
 
+
+
+def get_network(params:dict):
+    model_name = params['name']
+    if model_name in resnets:
+        return get_resnet_model(params)
+    if model_name in densenets:
+        return get_densenet_model(params)
+    return None

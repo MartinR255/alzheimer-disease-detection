@@ -1,12 +1,18 @@
 import os
-import yaml
 import argparse
 from datetime import datetime
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-from utils import get_memory_dataset, load_yaml_config, get_optimizer, get_loss
-from utils import get_densenet_model
+from utils import (
+    get_memory_dataset, 
+    load_yaml_config, 
+    get_optimizer, 
+    get_loss, 
+    copy_config,
+    get_network               
+)
+
 
 from trainer import Trainer
 
@@ -22,6 +28,9 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     data_config = load_yaml_config(data_config_file_path)
     train_config = load_yaml_config(train_config_file_path)
 
+    copy_config(data_config_file_path, os.sep.join([data_config['save_eval_logs_path'], 'data_configs', f'{run_id}_data_config.yaml']))
+    copy_config(train_config_file_path,  os.sep.join([data_config['save_eval_logs_path'], 'train_configs', f'{run_id}_train_config.yaml']))
+
     """
     Setup paths to data
     """
@@ -36,7 +45,7 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     val_results_path = os.sep.join([data_config['save_eval_logs_path'], 'val_results.csv'])
     train_params_path = os.sep.join([data_config['save_eval_logs_path'], 'train_params.csv'])
 
-    save_model_path = data_config['save_models_path']
+    save_model_path = os.sep.join([data_config['save_eval_logs_path'], 'models'])
     report_root_path = data_config['save_eval_logs_path']
 
     """
@@ -47,15 +56,9 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     num_epochs = train_config['training']['num_epochs']
     num_workers = train_config['training']['num_workers']
     validation_interval = train_config['training']['validation_interval']
-    
-    model_name = train_config['model']['name']
+
     num_classes = train_config['model']['num_classes']
 
-    optimizer_name = train_config['optimizer']['name']
-    learning_rate = train_config['optimizer']['lr']
-    weight_decay = train_config['optimizer']['weight_decay']
-    
-    loss_function_name = train_config['loss']['name']
 
     """
     Prepare data
@@ -83,11 +86,11 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     Prepare model, loss function, optimizer etc.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = get_densenet_model(train_config['model']).to(device)
+    model = get_network(train_config['model']).to(device)
     optimizer = get_optimizer(model.parameters(), train_config['optimizer'])
-    loss_function = get_loss(train_config['loss'])
-    
+    loss_function = get_loss(train_config['loss'], device)
 
+   
     """
     Prepare report
     """
@@ -123,20 +126,12 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     Save data about traning
     """
     report.create_table('Training_parameters', [
-        'ID', 'Epoch Number', 'Training Data Size', 'Validation Data Size', 'Batch Size', 
-        'Num Classes', 'Spatial Dims', 'Input Channels', 'Network Type', 
-        'Optimizer', 'Learning Rate', 'Weight Decay', 
-        'Dropout Rate fc', 'Dropout Rate relu', 
-        'Loss Function', 'Validation Interval', 'Training Duration (seconds)'
+        'ID', 'Epoch Number', 'Training Data Size', 'Validation Data Size', 'Training Duration (seconds)'
     ], train_params_path)
 
     training_duration = end_train_time - start_train_time 
     report.add_row('Training_parameters', [
-        run_id, num_epochs, len(train_ds), len(val_ds), batch_size, 
-        num_classes, train_config['model']['spatial_dims'], train_config['model']['n_input_channels'], model_name, 
-        optimizer_name, learning_rate, weight_decay, 
-        train_config['model']['dropout_rate_fc'], train_config['model']['dropout_rate_relu'],
-        loss_function_name, validation_interval, training_duration.total_seconds()
+        run_id, num_epochs, len(train_ds), len(val_ds), training_duration.total_seconds()
     ])
 
     

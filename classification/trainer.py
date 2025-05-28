@@ -9,7 +9,7 @@ from report import Report
 
 import monai 
 from monai.data import DataLoader
-
+from utils import make_file_dir
 
 
 class Trainer():
@@ -163,6 +163,10 @@ class Trainer():
             'epoch': epoch_val,
             'best_metric': best_metric
         }
+
+        model_path = os.sep.join([self._save_model_path, f'{self._run_id}_{epoch_val}.pth'])
+        make_file_dir(model_path)
+
         torch.save(
             checkpoint, 
             os.sep.join([self._save_model_path, f'{self._run_id}_{epoch_val}.pth'])
