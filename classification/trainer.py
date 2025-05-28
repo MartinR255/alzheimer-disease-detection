@@ -58,7 +58,7 @@ class Trainer():
             self._scaler.scale(loss).backward() 
             self._scaler.step(self._optimizer)
             self._scaler.update()
-
+            
             model_out_argmax = model_out.argmax(dim=1)
             self._report.update_metrics('train', 'accuracy', model_out_argmax, labels)
             self._report.update_metrics('train', 'precision', model_out_argmax, labels)

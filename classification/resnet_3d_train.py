@@ -1,11 +1,10 @@
 import os
-import yaml
 import argparse
 from datetime import datetime
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-from utils import get_memory_dataset, load_yaml_config, get_optimizer, get_loss
+from utils import get_memory_dataset, load_yaml_config, get_optimizer, get_loss, copy_config
 from utils import get_resnet_model
 
 from trainer import Trainer
@@ -21,6 +20,9 @@ from monai.utils import set_determinism
 def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_path:str = None): 
     data_config = load_yaml_config(data_config_file_path)
     train_config = load_yaml_config(train_config_file_path)
+
+    copy_config(data_config_file_path, os.sep.join([data_config['save_eval_logs_path'], 'data_configs', f'{run_id}_data_config.yaml']))
+    copy_config(train_config_file_path,  os.sep.join([data_config['save_eval_logs_path'], 'train_configs', f'{run_id}_train_config.yaml']))
 
     """
     Setup paths to data

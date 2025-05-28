@@ -2,6 +2,7 @@ import os
 import yaml
 import json
 import numpy as np
+import pandas as pd
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -11,6 +12,7 @@ from torchvision.transforms import Normalize
 from torch.nn import Parameter
 from memory_dataset import MemoryDataset
 from monai.data import ImageDataset
+from monai.losses import FocalLoss
 
 from typing import Iterable
 
@@ -28,6 +30,7 @@ from monai.transforms import (
 from sklearn.model_selection import train_test_split
 
 __all__ = [
+    'copy_config',
     'load_data',
     'get_transform',
     'get_memory_dataset',   
@@ -39,6 +42,16 @@ __all__ = [
     'get_loss'
 ]
 
+
+
+def copy_config(file_path:str, new_file_path:str):
+    folder_path = os.path.dirname(new_file_path)
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    data = load_yaml_config(file_path)
+    with open(new_file_path, 'w') as file:
+        yaml.dump(data, file)
 
 
 def load_data(image_dataset_path: str, dataset_partiton_path: str) -> tuple:
@@ -236,15 +249,39 @@ def get_optimizer(model_params:Iterable[Parameter], params:dict) -> torch.optim.
 """
 Loss functions
 """
-def get_cross_entropy_loss(params:dict) -> torch.nn.CrossEntropyLoss:
-    return torch.nn.CrossEntropyLoss()
+def get_cross_entropy_loss(params:dict, device) -> torch.nn.CrossEntropyLoss:
+    if params['weight'] is not None:
+        weight = torch.tensor(params['weights'], dtype=torch.float).to(device)
+
+    reduction = params['reduction'] if params['reduction'] is not None else 'mean'
+    label_smoothing = params['label_smoothing'] if params['label_smoothing'] is not None else 0.0
+
+    return torch.nn.CrossEntropyLoss(
+        weight=weight,
+        reduction=reduction,
+        label_smoothing=label_smoothing
+    )
+
+
+def get_focal_loss(params:dict, device):
+    gamma = params['gamma'] if params['gamma'] is not None else 2.0
+    alpha = params['alpha'] if params['alpha'] is not None else None
+    reduction = params['reduction'] if params['reduction'] is not None else 'mean'
+
+    return FocalLoss(
+        to_onehot_y=True,
+        gamma=gamma,
+        alpha=alpha,
+        reduction=reduction
+    )
 
 
 loss_functions ={
-    'cross_entropy': get_cross_entropy_loss,
+    'cross_entropy_loss': get_cross_entropy_loss,
+    'focal_loss': get_cross_entropy_loss,
 }
 
-def get_loss(params:dict) -> torch.nn.Module:
+def get_loss(params:dict, device) -> torch.nn.Module:
     """
     Create a loss function based on the provided parameters.
     """
@@ -254,5 +291,5 @@ def get_loss(params:dict) -> torch.nn.Module:
     
     loss_function = loss_functions[loss_name]
     
-    return loss_function(params)
+    return loss_function(params, device)
 
