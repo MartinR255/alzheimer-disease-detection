@@ -113,14 +113,6 @@ def get_transform() -> Compose:
                 margin=0,
             ),
             IntensityNormalization(clip_ratio=99.5),
-            # ScaleIntensityRange(
-            #     a_min=1.401298464324817e-45,
-            #     a_max=1697.13525390625,
-            #     b_min=0.0,
-            #     b_max=1.0,
-            #     clip=True,
-            #     dtype=torch.float16
-            # ),
             Resize(spatial_size=(128, 128, 128)),
             ToTensor(dtype=torch.float16)
     ]

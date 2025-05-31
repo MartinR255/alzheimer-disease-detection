@@ -2,6 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 
+from utils import make_file_dir
+
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
@@ -147,6 +149,8 @@ class Report:
 
     def save_confusion_matrix(self, predicted_labels, ground_truth_labels, file_name:str):
         file_path = os.sep.join([self._root_path, 'confusion_matrices', file_name]) 
+        make_file_dir(file_path)
+
         conf_matrix = multiclass_confusion_matrix(predicted_labels, ground_truth_labels, self._num_classes)
         conf_matrix_array = conf_matrix.cpu().numpy()
         np.save(file_path, conf_matrix_array)

@@ -34,10 +34,6 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     """
     Setup paths to data
     """
-    mri_images_path = data_config['images_path']
-    train_partiton_path = data_config['train_partiton_path'] 
-    validation_partition_path = data_config['validation_partiton_path'] 
-
     train_transformed_data_path = data_config['train_preproc_chunk_path']  
     validation_transformed_data_path = data_config['validation_preproc_chunk_path']  
     

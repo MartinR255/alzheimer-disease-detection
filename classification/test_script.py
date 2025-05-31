@@ -1,82 +1,81 @@
 import os
-import re
 import argparse
-import pandas as pd
-from resnet_3d_test import main as resnet_test
-from densenet_3d_test import main as densenet_test
+from pathlib import Path
 
-from utils.utils import load_yaml_config
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-resnets = [ 'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet18p', 'resnet34p', 'resnet50p', 'resnet101p']
-densenets = ['densenet121', 'densenet121', 'densenet169', 'densenet201']
+from utils import get_memory_dataset, get_loss, get_network
+from tester import Tester
 
-def get_models_paths(path:str):
-    models_paths = {}
-    file_pattern = re.compile(r'^(\d+)_(\d+)\.pth$') 
+import torch
 
-    for file_name in os.listdir(path):
-        run_id, epoch = file_pattern.match(file_name).groups()
-        model_path = os.sep.join([path, file_name])
-        models_paths.setdefault(run_id, []).append({'path': model_path, 'epoch': epoch})
-   
-    return models_paths
+from report import Report
 
+from monai.data import DataLoader
+from monai.utils import set_determinism
+ 
 
-def test_models(data_config, models_paths, row_data):
-    row_id = row_data['ID']
+def main(run_id:int, data_config:dict, train_config:dict): 
+    """
+    Setup paths to data
+    """
+    test_transformed_data_path = data_config['test_preproc_chunk_path']   
+    test_results_path = os.sep.join([data_config['save_eval_logs_path'], 'test_results.csv'],)
+    report_root_path = data_config['save_eval_logs_path']
 
-    model_run_data = models_paths[str(row_id)]
-    for model_data in model_run_data:
-        train_config = {
-            'batch_size': row_data['Batch Size'],
-            'num_workers': 0,
-            'model' : {
-                'name': row_data['Network Type'],
-                'num_classes': row_data['Num Classes'],
-                'spatial_dims': row_data['Spatial Dims'],
-                'n_input_channels': row_data['Input Channels'],
-                'load_model_path': model_data['path'],
-                'dropout_rate_fc': row_data['Dropout Rate fc'],
-                'dropout_rate_relu': row_data['Dropout Rate relu']
-            },
-            'epoch' : model_data['epoch'],
-            'loss': {
-                "name": row_data['Loss Function']
-            }
-        }
-     
-        if row_data['Network Type'] in resnets:
-            resnet_test(
-                run_id=row_id,
-                data_config=data_config,
-                train_config=train_config
-            )
-        elif row_data['Network Type'] in densenets:
-            densenet_test(
-                run_id=row_id,
-                data_config=data_config,
-                train_config=train_config
-            )
-
-
-
-def main(data_config:str, train_params:str, models_folder:str):
-    data_config = load_yaml_config(data_config)
-    models_paths = get_models_paths(models_folder)
+    """
+    Load configs 
+    """
+    load_model_path = train_config['model']['load_model_path']
+    batch_size = train_config['training']['batch_size']
+    num_workers = train_config['training']['num_workers']
+    num_classes = train_config['model']['num_classes']
     
-    df = pd.read_csv(train_params)
-    grouped = df.groupby('Network Type')
-    for _, group_df in grouped:
-        for _, row in group_df.iterrows():
-            row_data = row.to_dict()
-            test_models(data_config, models_paths, row_data)
-            
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--data_config', type=str, required=True)
-    parser.add_argument('--train_params', type=str, required=True)
-    parser.add_argument('--models_folder', type=str, required=True)
-    args = parser.parse_args()
+    model_filename = Path(train_config['model']['load_model_path']).name
+    _, model_epoch = model_filename.split('.')[0].split('_') # runID_epochNum.pth
+    epoch = model_epoch
+    
 
-    main(args.data_config, args.train_params, args.models_folder)
+    """
+    Prepare data
+    """
+    set_determinism(seed=42)
+    test_ds = get_memory_dataset(test_transformed_data_path) 
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=batch_size,
+        num_workers=num_workers, 
+        pin_memory=False,
+        shuffle=True
+    )
+    
+    """
+    Prepare model and loss function
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = get_network(train_config['model']).to(device)
+    loss_function = get_loss(train_config['loss'], device)
+
+    """
+    Prepare report
+    """
+    report  = Report(num_classes=num_classes, root_path=report_root_path)
+    test_run_table_columns = [
+        'ID', 'Epoch', 'Loss',
+        'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
+    ]
+    report.create_table('test_results', test_run_table_columns, test_results_path)
+
+
+    """
+    Test model
+    """
+    tester = Tester(
+        model=model, 
+        loss_function=loss_function, 
+        test_data=test_loader, 
+        device=device,
+        report=report
+    )
+    tester.test(run_id, epoch, load_model_path)  
