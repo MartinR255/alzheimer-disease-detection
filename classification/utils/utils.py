@@ -28,6 +28,7 @@ from monai.transforms import (
 from sklearn.model_selection import train_test_split
 from .resnet_utils import get_resnet_model
 from .densenet_utils import get_densenet_model
+from .efficientnet import get_efficientnet_model
 resnets = [
     'resnet10',
     'resnet18',
@@ -44,6 +45,18 @@ densenets = [
     'densenet121',
     'densenet169',
     'densenet201'
+]
+
+efficientnets = [
+    'efficientnet-b0',
+    'efficientnet-b1',
+    'efficientnet-b2',
+    'efficientnet-b3',
+    'efficientnet-b4',
+    'efficientnet-b5',
+    'efficientnet-b6',
+    'efficientnet-b7',
+    'efficientnet-b8'
 ]
 
 
@@ -313,11 +326,12 @@ def get_loss(params:dict, device) -> torch.nn.Module:
     return loss_function(params, device)
 
 
-
 def get_network(params:dict):
     model_name = params['name']
     if model_name in resnets:
         return get_resnet_model(params)
     if model_name in densenets:
         return get_densenet_model(params)
+    if model_name in efficientnets:
+        return get_efficientnet_model(params)
     return None
