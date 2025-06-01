@@ -23,7 +23,8 @@ class Trainer():
         validation_interval:int,
         device:torch.device,
         save_model_path:str,
-        report: Report     
+        report: Report,
+        scheduler     
     ) -> None: 
         self._model = model
         self._optimizer = optimizer
@@ -34,6 +35,7 @@ class Trainer():
         self._device = device
         self._save_model_path = save_model_path
         self._report = report
+        self._scheduler = scheduler
 
         self._report.init_metrics('train')
         self._report.init_metrics('validation')
@@ -106,6 +108,7 @@ class Trainer():
                     epoch_loss += loss.item()
 
             epoch_loss /= step
+            self._scheduler.step(epoch_loss)
 
             metrics_values = self._report.compute_metrics('validation')
             self._report.add_row('Validation_Results', [

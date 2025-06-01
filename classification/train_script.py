@@ -86,6 +86,14 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     optimizer = get_optimizer(model.parameters(), train_config['optimizer'])
     loss_function = get_loss(train_config['loss'], device)
 
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        factor=0.5,
+        patience=2,
+        min_lr=1e-6
+    )
+
    
     """
     Prepare report
@@ -111,7 +119,8 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
         validation_interval=validation_interval, 
         device=device,
         save_model_path=save_model_path,
-        report=report
+        report=report,
+        scheduler=scheduler
     )
     start_train_time = datetime.now()
     trainer.train(run_id, num_epochs, load_model_path)
