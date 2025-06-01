@@ -20,7 +20,8 @@ def main(run_id:int, data_config:dict, train_config:dict):
     Setup paths to data
     """
     test_transformed_data_path = data_config['test_preproc_chunk_path']   
-    test_results_path = os.sep.join([data_config['save_eval_logs_path'], 'test_results.csv'],)
+    test_results_path = os.sep.join([data_config['save_eval_logs_path'], 'test_results.csv'])
+    test_results_separate_path = os.sep.join([data_config['save_eval_logs_path'], 'test_results_separate.csv'])
     report_root_path = data_config['save_eval_logs_path']
 
     """
@@ -66,6 +67,12 @@ def main(run_id:int, data_config:dict, train_config:dict):
         'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
     ]
     report.create_table('test_results', test_run_table_columns, test_results_path)
+
+    test_run_table_columns_separate = [
+        'ID', 'Epoch', 'Group',
+        'Accuracy', 'Precision', 'Recall', 'F1', 'AUROC'
+    ]
+    report.create_table('test_results_separate', test_run_table_columns_separate, test_results_separate_path)
 
 
     """

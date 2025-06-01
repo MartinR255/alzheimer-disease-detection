@@ -299,12 +299,14 @@ def get_focal_loss(params:dict, device):
     gamma = params['gamma'] if params['gamma'] is not None else 2.0
     alpha = params['alpha'] if params['alpha'] is not None else None
     reduction = params['reduction'] if params['reduction'] is not None else 'mean'
+    weight = params['weight']
 
     return FocalLoss(
         to_onehot_y=True,
         gamma=gamma,
         alpha=alpha,
-        reduction=reduction
+        reduction=reduction,
+        weight=weight
     )
 
 
