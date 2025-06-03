@@ -10,7 +10,8 @@ from utils import (
     get_optimizer, 
     get_loss, 
     copy_config,
-    get_network               
+    get_network,
+    get_scheduler            
 )
 
 
@@ -85,15 +86,9 @@ def main(run_id:int = -1, data_config_file_path:str = None, train_config_file_pa
     model = get_network(train_config['model']).to(device)
     optimizer = get_optimizer(model.parameters(), train_config['optimizer'])
     loss_function = get_loss(train_config['loss'], device)
-
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode='min',
-        factor=0.5,
-        patience=2,
-        min_lr=1e-6
-    )
-
+    scheduler = get_scheduler(train_config['scheduler'], optimizer) if train_config['scheduler']['name'] is not None else None
+    
+   
    
     """
     Prepare report

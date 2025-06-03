@@ -2,7 +2,6 @@ import os
 import yaml
 import json
 import numpy as np
-import pandas as pd
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -22,42 +21,16 @@ from monai.transforms import (
     Resize, 
     EnsureChannelFirst, 
     CropForeground,
-    ToTensor
+    ToTensor,
+    GaussianSmooth
 )
 
 from sklearn.model_selection import train_test_split
 from .resnet_utils import get_resnet_model
 from .densenet_utils import get_densenet_model
 from .efficientnet import get_efficientnet_model
-resnets = [
-    'resnet10',
-    'resnet18',
-    'resnet34',
-    'resnet50',
-    'resnet101',
-    'resnet10p',
-    'resnet18p',
-    'resnet34p',
-    'resnet50p',
-    'resnet101p'
-]
-densenets = [
-    'densenet121',
-    'densenet169',
-    'densenet201'
-]
+from .ad3dcnn import get_custom_net
 
-efficientnets = [
-    'efficientnet-b0',
-    'efficientnet-b1',
-    'efficientnet-b2',
-    'efficientnet-b3',
-    'efficientnet-b4',
-    'efficientnet-b5',
-    'efficientnet-b6',
-    'efficientnet-b7',
-    'efficientnet-b8'
-]
 
 
 __all__ = [
@@ -71,7 +44,9 @@ __all__ = [
     'stratified_split',
     'load_yaml_config',
     'get_optimizer',
-    'get_loss'
+    'get_loss',
+    'get_network',
+    'get_scheduler'
 ]
 
 def make_file_dir(file_path:str):
@@ -125,8 +100,9 @@ def get_transform() -> Compose:
                 allow_smaller=False,
                 margin=0,
             ),
+            GaussianSmooth(sigma=1),
             IntensityNormalization(clip_ratio=99.5),
-            Resize(spatial_size=(128, 128, 128)),
+            Resize(spatial_size=(128, 128, 128), mode='trilinear'),
             ToTensor(dtype=torch.float16)
     ]
 
@@ -328,6 +304,43 @@ def get_loss(params:dict, device) -> torch.nn.Module:
     return loss_function(params, device)
 
 
+
+
+"""
+Networks
+"""
+resnets = [
+    'resnet10',
+    'resnet18',
+    'resnet34',
+    'resnet50',
+    'resnet101',
+    'resnet10p',
+    'resnet18p',
+    'resnet34p',
+    'resnet50p',
+    'resnet101p'
+]
+densenets = [
+    'densenet121',
+    'densenet169',
+    'densenet201'
+]
+efficientnets = [
+    'efficientnet-b0',
+    'efficientnet-b1',
+    'efficientnet-b2',
+    'efficientnet-b3',
+    'efficientnet-b4',
+    'efficientnet-b5',
+    'efficientnet-b6',
+    'efficientnet-b7',
+    'efficientnet-b8'
+]
+custom = [
+    'AD3DCNN'
+]
+
 def get_network(params:dict):
     model_name = params['name']
     if model_name in resnets:
@@ -336,4 +349,37 @@ def get_network(params:dict):
         return get_densenet_model(params)
     if model_name in efficientnets:
         return get_efficientnet_model(params)
+    if model_name in custom:
+        return get_custom_net(params)
     return None
+
+
+
+"""
+Scheduler
+"""
+def get_reduce_lr_on_plateau(params:dict, optimizer:torch.optim) -> torch.optim.lr_scheduler:
+    params['factor']
+    params['patience']
+    params['min_lr']
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        factor=params['factor'],
+        patience=params['patience'],
+        min_lr=params['min_lr']
+    )
+    
+
+schedulers = {
+   'ReduceLROnPlateau' : get_reduce_lr_on_plateau
+}
+
+def get_scheduler(params:dict, optimizer:torch.optim):
+    scheduler_name = params['name']
+    if scheduler_name not in schedulers:
+        raise ValueError(f"Scheduler type '{scheduler_name}' is not supported.")
+    
+    scheduler = schedulers[scheduler_name]
+    
+    return scheduler(params, optimizer)

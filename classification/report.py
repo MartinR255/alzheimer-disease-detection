@@ -105,7 +105,12 @@ class Report:
         """
         computations = {}
         for metric_name, metric in self._metrics[group_name].items():
-            computations[metric_name] = metric.compute().item()
+            metric_value = metric.compute()
+            if metric_value.numel() == 1:
+                computations[metric_name] = metric_value.item()
+            else:
+                computations[metric_name] = metric_value.tolist()
+            # computations[metric_name] = metric.compute().item()
 
         return computations
 

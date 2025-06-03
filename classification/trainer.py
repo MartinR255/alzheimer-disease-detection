@@ -24,7 +24,7 @@ class Trainer():
         device:torch.device,
         save_model_path:str,
         report: Report,
-        scheduler     
+        scheduler: torch.optim.lr_scheduler   
     ) -> None: 
         self._model = model
         self._optimizer = optimizer
@@ -108,7 +108,9 @@ class Trainer():
                     epoch_loss += loss.item()
 
             epoch_loss /= step
-            self._scheduler.step(epoch_loss)
+
+            if self._scheduler is not None:
+                self._scheduler.step(epoch_loss)
 
             metrics_values = self._report.compute_metrics('validation')
             self._report.add_row('Validation_Results', [

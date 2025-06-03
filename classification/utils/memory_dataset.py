@@ -6,8 +6,6 @@ import torch
 from torch.utils.data import Dataset
 
 
-
- 
 class MemoryDataset(Dataset):
     
     def __init__(self, path:str):

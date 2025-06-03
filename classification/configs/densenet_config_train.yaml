@@ -21,7 +21,24 @@ optimizer:
  weight_decay: 0.00001 # adam, adamw, rmsprop
  betas: [0.9, 0.999] # adam, adamw
 
+
+scheduler:
+ name: null #'ReduceLROnPlateau'
+ factor: 0.5
+ patience: 2
+ min_lr: 1e-6
+
+
 loss:
- name: 'cross_entropy'
+ name: 'cross_entropy_loss' 
+ weight: [1, 1] 
+ reduction: 'mean'
+ label_smoothing: 0.1
+ 
+#  name: 'focal_loss'
+#  gamma: 1.5
+#  alpha: 0.25
+#  reduction: 'mean'
+#  weight: [1, 1]
 
 ...
