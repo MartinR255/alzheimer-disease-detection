@@ -29,8 +29,6 @@ from sklearn.model_selection import train_test_split
 from .resnet_utils import get_resnet_model
 from .densenet_utils import get_densenet_model
 from .efficientnet import get_efficientnet_model
-from .ad3dcnn import get_custom_net
-
 
 
 __all__ = [
@@ -337,9 +335,7 @@ efficientnets = [
     'efficientnet-b7',
     'efficientnet-b8'
 ]
-custom = [
-    'AD3DCNN'
-]
+
 
 def get_network(params:dict):
     model_name = params['name']
@@ -349,8 +345,6 @@ def get_network(params:dict):
         return get_densenet_model(params)
     if model_name in efficientnets:
         return get_efficientnet_model(params)
-    if model_name in custom:
-        return get_custom_net(params)
     return None
 
 
@@ -359,9 +353,6 @@ def get_network(params:dict):
 Scheduler
 """
 def get_reduce_lr_on_plateau(params:dict, optimizer:torch.optim) -> torch.optim.lr_scheduler:
-    params['factor']
-    params['patience']
-    params['min_lr']
     return torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode='min',
