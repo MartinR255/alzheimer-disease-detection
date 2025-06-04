@@ -1,16 +1,14 @@
 import os
 import json
 import argparse
-import numpy as np
 from pathlib import Path
 
 from utils import (
     load_yaml_config, 
     find_dicom_directories,
-    del_file, 
-    load_model, 
     get_transform_clean_tensor,
-    get_transform_resample_tensor
+    get_transform_resample_tensor,
+    get_network
 )
 from process import MRIPreprocessor
 
@@ -50,17 +48,9 @@ class Pipeline:
 
 
     def _setup_model(self):
-        spatial_dims = 3
-        n_input_channels = 1
-        num_classes = 5
-        
+        model_config = load_yaml_config(self._config['model_config_path'])
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._model =  resnet18(
-            spatial_dims=spatial_dims, 
-            n_input_channels=n_input_channels, 
-            num_classes=num_classes
-        ).to(self._device)
-        self._model = load_model(self._model, self._config['model_path'])
+        self._model = get_network(model_config['model']).to(self._device)
 
 
     def _clean_data(self,
