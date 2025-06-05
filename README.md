@@ -7,17 +7,11 @@ In this work, we aim to explore methods for the detection of Alzheimer's disease
 ---
 
 ## Installation
-
----
-
-## Usage
-
-- **Training:**  
-
-- **Testing and Evaluation:**  
-  
-- **Pipeline Execution:**  
-
+```
+conda create -n yourenvname python=3.11.10
+conda activate yourenvname 
+pip install -r requirements.txt
+```
 
 ---
 ## Data

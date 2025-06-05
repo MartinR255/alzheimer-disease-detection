@@ -6,16 +6,16 @@ from pathlib import Path
 from utils import (
     load_yaml_config, 
     find_dicom_directories,
-    get_transform_clean_tensor,
+    get_transform,
     get_transform_resample_tensor,
-    get_network
+    get_network,
+    get_nested_network_attributes
 )
 from process import MRIPreprocessor
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
-from monai.networks.nets import resnet18
 
 from captum.attr import GuidedGradCam, Occlusion
 
@@ -26,6 +26,7 @@ from medcam import medcam
 
 from monai.transforms import Resize
 import ants
+
 
 class Pipeline:
 
@@ -38,10 +39,8 @@ class Pipeline:
         self._predicted_labels = {}
 
 
-
     def _setup_paths(self):
         self._mni_template = self._config['mni_template_path']
-        self._save_nifti_format = self._config['save_nifti_format']
         self._save_brain_mask = self._config['save_brain_mask']
         self._root_output_folder = os.sep.join([self._config['output_root_folder_path'], self._run_id])
         os.makedirs(self._root_output_folder, exist_ok=True)
@@ -49,8 +48,10 @@ class Pipeline:
 
     def _setup_model(self):
         model_config = load_yaml_config(self._config['model_config_path'])
+        self._grad_layer = model_config['grad_layer']
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._model = get_network(model_config['model']).to(self._device)
+        self._model.eval()
 
 
     def _clean_data(self,
@@ -89,13 +90,14 @@ class Pipeline:
     
 
     def _setup_interpretability_methods(self):
-        layers = [self._model.layer4[-1]]
+        get_model_attr = get_nested_network_attributes(self._model, self._grad_layer)
+        layers = [get_model_attr]
         self._gradcam = GradCAM(model=self._model, target_layers=layers)
-        self._guided_gradcam = GuidedGradCam(model=self._model, layer=self._model.layer4[-1])
+        self._guided_gradcam = GuidedGradCam(model=self._model, layer=layers[-1])
         self._occlusion = Occlusion(self._model)
 
         # Inject model with M3d-CAM for GradCAM++
-        self._model = medcam.inject(self._model, backend='gcampp', layer='layer4', return_attention=True)
+        self._model = medcam.inject(self._model, backend='gcampp', layer=self._grad_layer, return_attention=True)
 
     
     def _get_guided_gradcam_heatmap(self, image_data, predicted_label, resize_target=None):
@@ -217,15 +219,16 @@ class Pipeline:
                     processed_file_mask_path = os.sep.join([output_folder_path, f'{scan_id}_mask.nii.gz'])
 
                 
-                self._clean_data(preprocessor, 
-                   folder_path, 
-                   nifti_file_path, 
-                   processed_file_path, 
-                   processed_file_mask_path
+                self._clean_data(
+                    preprocessor, 
+                    folder_path, 
+                    nifti_file_path, 
+                    processed_file_path, 
+                    processed_file_mask_path
                 )
 
                 # Data preprocessing
-                clean_transform = get_transform_clean_tensor()
+                clean_transform = get_transform()
                 mri_tensor_cleaned = clean_transform(processed_file_path)
                 cleaned_mri_shape = tuple(mri_tensor_cleaned.shape)[1:] # cropped image dimensions without empty slices
 
@@ -235,7 +238,6 @@ class Pipeline:
                 # Classification
                 image_data = image_data.unsqueeze(0) # add batch dimension
                 predicted_label, gradcam_plus_plus_heatmap = self._classification(scan_id, image_data)
-
 
                 # Get orientation data from preprocessed image
                 spacing = preprocessor._mri_image.spacing

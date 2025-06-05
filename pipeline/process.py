@@ -97,7 +97,7 @@ class MRIPreprocessor:
         """
         self.logger.debug(f"Starting MNI registration with template: {mni_template_path}")
         
-        mri_image = ants.n4_bias_field_correction(self._mri_image)
+        mri_image = ants.n4_bias_field_correction(image=self._mri_image, mask=self._mri_mask)
 
         mni_template = ants.image_read(mni_template_path)
         for tranformation_type in tranformation_types:

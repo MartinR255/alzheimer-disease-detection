@@ -2,13 +2,15 @@ import os
 import yaml
 import json
 import numpy as np
+from pydicom.misc import is_dicom
+from pathlib import Path
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
 
 from torch.nn import Parameter
-from memory_dataset import MemoryDataset
+from .memory_dataset import MemoryDataset
 from monai.data import ImageDataset
 from monai.losses import FocalLoss
 
@@ -21,8 +23,7 @@ from monai.transforms import (
     Resize, 
     EnsureChannelFirst, 
     CropForeground,
-    ToTensor,
-    GaussianSmooth
+    ToTensor
 )
 
 from sklearn.model_selection import train_test_split
@@ -41,6 +42,7 @@ __all__ = [
     'save_dataset_to_file',
     'stratified_split',
     'load_yaml_config',
+    'get_nested_network_attributes',
     'get_optimizer',
     'get_loss',
     'get_network',
@@ -59,6 +61,20 @@ def copy_config(file_path:str, new_file_path:str):
     data = load_yaml_config(file_path)
     with open(new_file_path, 'w') as file:
         yaml.dump(data, file)
+
+
+def find_dicom_directories(root_path) -> list:
+    dicom_dirs = set()
+    for dirpath, _, filenames in os.walk(root_path):
+        for filename in filenames:
+            file_path = Path(os.sep.join([dirpath, filename])).as_posix()
+            try:
+                if is_dicom(file_path):
+                    dicom_dirs.add(Path(dirpath).as_posix())
+                    break  
+            except Exception:
+                continue 
+    return dicom_dirs
 
 
 def load_data(image_dataset_path: str, dataset_partiton_path: str) -> tuple:
@@ -83,9 +99,9 @@ def load_data(image_dataset_path: str, dataset_partiton_path: str) -> tuple:
 
 
 
-def get_transform() -> Compose:
+def get_transform_clean_tensor() -> Compose:
     """
-    Creates a transformation pipeline for image preprocessing before feeding to the model.
+    Creates a transformation pipeline for image cleaning before feeding to the model.
     """
     def select_fn(x):
         return x > 0.00001
@@ -98,13 +114,33 @@ def get_transform() -> Compose:
                 allow_smaller=False,
                 margin=0,
             ),
-            GaussianSmooth(sigma=1),
             IntensityNormalization(clip_ratio=99.5),
-            Resize(spatial_size=(128, 128, 128), mode='trilinear'),
             ToTensor(dtype=torch.float16)
     ]
-
     return Compose(data_transform)
+
+
+def get_transform_resample_tensor(spatial_size=(128, 128, 128)) -> Compose:
+    """
+    Resamples image to spatial_size
+    """
+    data_transform = Compose(
+        [   
+            Resize(spatial_size=spatial_size, mode='trilinear'),
+            ToTensor(dtype=torch.float32)
+        ]
+    )
+    return data_transform
+
+
+def get_transform(spatial_size=(128, 128, 128)) -> Compose:
+    """
+    Creates a transformation pipeline for image preprocessing before feeding to the model.
+    """
+    clean_transform = get_transform_clean_tensor()
+    resample_transform = get_transform_resample_tensor(spatial_size=spatial_size)
+    
+    return Compose(clean_transform.transforms + resample_transform.transforms)
 
 
 def get_memory_dataset(dataset_path:str = None) -> MemoryDataset:
@@ -198,6 +234,23 @@ def load_yaml_config(file_path:str) -> dict:
     with open(file_path, "r") as file:
         config = yaml.safe_load(file)
     return config
+
+
+
+def get_nested_network_attributes(model, attributes_path: str):
+    """
+    Takes a model and a string representing the path to an attribute within the model,
+    and returns the attribute.
+    """
+    attrs = attributes_path.split('.')
+    for attr in attrs:
+        if attr.isdigit():
+            model = model[int(attr)]
+        else:
+            model = getattr(model, attr)
+    return model
+
+
 
 
 """

@@ -1,3 +1,5 @@
+
+
 from .utils import (
     make_file_dir,
     copy_config,
@@ -8,6 +10,7 @@ from .utils import (
     save_dataset_to_file,
     stratified_split,
     load_yaml_config,
+    get_nested_network_attributes,
     get_optimizer,
     get_loss,
     get_network,
