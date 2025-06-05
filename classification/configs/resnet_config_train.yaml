@@ -1,27 +1,44 @@
 ---
 training:
  batch_size: 16
- num_epochs: 15
+ num_epochs: 25
  num_workers: 0
  validation_interval: 1 
 
 
 model:
- name: 'resnet18' # resnet18, resnet34, resnet50, resnet101(pretrained models: resnet18p,resnet34p,resnet50p) 
- num_classes: 5 
+ name: 'resnet18' # resnet18, resnet34, resnet50, resnet101 (pretrained models: resnet10p, resnet18p,resnet34p,resnet50p, resnet101p) 
+ num_classes: 2
  spatial_dims: 3
  n_input_channels: 1 
  load_model_path: null # path to pretrained model(and/or optimizer) state dict
- dropout_rate_fc: 0.2
+ dropout_rate_relu: 0.2
+ dropout_rate_fc: 0.1
 
 
 optimizer:
- name: 'adam' # adam, adamw, rmsprop
- lr: 0.0001 # # adam, adamw, rmsprop
- weight_decay: 0.00001 # adam, adamw, rmsprop
+ name: 'adamw' # adam, adamw
+ lr: 0.001 # # adam, adamw
+ weight_decay: 0.0001 # adam, adamw, 
  betas: [0.9, 0.999] # adam, adamw
+ 
+ 
+scheduler:
+ name: 'ReduceLROnPlateau'
+ factor: 0.5
+ patience: 3
+ min_lr: 0.000001
+
 
 loss:
- name: 'cross_entropy' # cross_entropy
-
+ name: 'cross_entropy_loss' 
+ weight: [1.7419, 0.7013] 
+ reduction: 'mean'
+ label_smoothing: 0.1
+ 
+#  name: 'focal_loss'
+#  gamma: 1.5
+#  alpha: 0.25
+#  reduction: 'mean'
+#  weight: [0.6966, 1.7719]
 ...

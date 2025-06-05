@@ -26,6 +26,7 @@ class Tester():
         self._report = report
 
         self._report.init_metrics('test')
+        self._report.init_metrics('test_separate', [None, None, None, None, None])
 
 
     def test(self, run_id:int, epoch:int, model_path:str) -> None:
@@ -48,6 +49,12 @@ class Tester():
                 self._report.update_metrics('test', 'f1_score', model_out_argmax, labels)
                 self._report.update_metrics('test', 'auroc', model_out.softmax(dim=1), labels) 
 
+                self._report.update_metrics('test_separate', 'accuracy', model_out_argmax, labels)
+                self._report.update_metrics('test_separate', 'precision', model_out_argmax, labels)
+                self._report.update_metrics('test_separate', 'recall', model_out_argmax, labels)
+                self._report.update_metrics('test_separate', 'f1_score', model_out_argmax, labels)
+                self._report.update_metrics('test_separate', 'auroc', model_out.softmax(dim=1), labels) 
+
                 # collect data for confusion matrix
                 ground_truth_labels = torch.cat((ground_truth_labels, labels))
                 predicted_labels = torch.cat((predicted_labels, model_out_argmax))
@@ -68,6 +75,21 @@ class Tester():
             metrics_values['f1_score'], 
             metrics_values['auroc']
         ])
+
+        # compute and save separte metric for each class
+        metrics_separate_values = self._report.compute_metrics('test_separate')
+        for group_idx in range(self._report.number_of_classes()):
+            self._report.add_row('test_results_separate', [
+                run_id,
+                epoch,
+                group_idx,
+                metrics_separate_values['accuracy'][group_idx],
+                metrics_separate_values['precision'][group_idx], 
+                metrics_separate_values['recall'][group_idx], 
+                metrics_separate_values['f1_score'][group_idx], 
+                metrics_separate_values['auroc'][group_idx]
+            ])
+
         self._report.save_confusion_matrix(predicted_labels, ground_truth_labels, f'conf_mat_{run_id}_{epoch}.npy')
 
 

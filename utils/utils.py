@@ -2,32 +2,39 @@ import os
 import yaml
 import json
 import numpy as np
+from pydicom.misc import is_dicom
+from pathlib import Path
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
-from torchvision.transforms import Normalize
 
 from torch.nn import Parameter
-from memory_dataset import MemoryDataset
+from .memory_dataset import MemoryDataset
 from monai.data import ImageDataset
+from monai.losses import FocalLoss
 
 from typing import Iterable
 
+from .intensity_normalization import IntensityNormalization
 from monai.transforms import (
     Compose, 
     LoadImage, 
     Resize, 
-    ScaleIntensity, 
     EnsureChannelFirst, 
-    Spacing, 
     CropForeground,
-    ScaleIntensity
+    ToTensor
 )
 
 from sklearn.model_selection import train_test_split
+from .resnet_utils import get_resnet_model
+from .densenet_utils import get_densenet_model
+from .efficientnet import get_efficientnet_model
+
 
 __all__ = [
+    'make_file_dir',
+    'copy_config',
     'load_data',
     'get_transform',
     'get_memory_dataset',   
@@ -35,10 +42,39 @@ __all__ = [
     'save_dataset_to_file',
     'stratified_split',
     'load_yaml_config',
+    'get_nested_network_attributes',
     'get_optimizer',
-    'get_loss'
+    'get_loss',
+    'get_network',
+    'get_scheduler'
 ]
 
+def make_file_dir(file_path:str):
+    folder_path = os.path.dirname(file_path)
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+
+def copy_config(file_path:str, new_file_path:str):
+    make_file_dir(new_file_path)
+
+    data = load_yaml_config(file_path)
+    with open(new_file_path, 'w') as file:
+        yaml.dump(data, file)
+
+
+def find_dicom_directories(root_path) -> list:
+    dicom_dirs = set()
+    for dirpath, _, filenames in os.walk(root_path):
+        for filename in filenames:
+            file_path = Path(os.sep.join([dirpath, filename])).as_posix()
+            try:
+                if is_dicom(file_path):
+                    dicom_dirs.add(Path(dirpath).as_posix())
+                    break  
+            except Exception:
+                continue 
+    return dicom_dirs
 
 
 def load_data(image_dataset_path: str, dataset_partiton_path: str) -> tuple:
@@ -63,30 +99,48 @@ def load_data(image_dataset_path: str, dataset_partiton_path: str) -> tuple:
 
 
 
-def get_transform() -> Compose:
+def get_transform_clean_tensor() -> Compose:
     """
-    Creates a transformation pipeline for image preprocessing before feeding to the model.
+    Creates a transformation pipeline for image cleaning before feeding to the model.
     """
     def select_fn(x):
-        return x > 0
-     
-    data_transform = Compose(
-        [
+        return x > 0.00001
+    
+    data_transform = [
             LoadImage(reader="monai.data.ITKReader"),
             EnsureChannelFirst(),
-            Spacing(pixdim=(1.0, 1.0, 1.0), mode='bilinear'),
-            ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16),
             CropForeground(
                 select_fn=select_fn,
                 allow_smaller=False,
                 margin=0,
             ),
-            Resize(spatial_size=(128, 128, 128)),
-            Normalize(mean=84.28270578018392, std=250.33769250046794),
-            ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16)
+            IntensityNormalization(clip_ratio=99.5),
+            ToTensor(dtype=torch.float16)
+    ]
+    return Compose(data_transform)
+
+
+def get_transform_resample_tensor(spatial_size=(128, 128, 128)) -> Compose:
+    """
+    Resamples image to spatial_size
+    """
+    data_transform = Compose(
+        [   
+            Resize(spatial_size=spatial_size, mode='trilinear'),
+            ToTensor(dtype=torch.float32)
         ]
     )
     return data_transform
+
+
+def get_transform(spatial_size=(128, 128, 128)) -> Compose:
+    """
+    Creates a transformation pipeline for image preprocessing before feeding to the model.
+    """
+    clean_transform = get_transform_clean_tensor()
+    resample_transform = get_transform_resample_tensor(spatial_size=spatial_size)
+    
+    return Compose(clean_transform.transforms + resample_transform.transforms)
 
 
 def get_memory_dataset(dataset_path:str = None) -> MemoryDataset:
@@ -182,6 +236,23 @@ def load_yaml_config(file_path:str) -> dict:
     return config
 
 
+
+def get_nested_network_attributes(model, attributes_path: str):
+    """
+    Takes a model and a string representing the path to an attribute within the model,
+    and returns the attribute.
+    """
+    attrs = attributes_path.split('.')
+    for attr in attrs:
+        if attr.isdigit():
+            model = model[int(attr)]
+        else:
+            model = getattr(model, attr)
+    return model
+
+
+
+
 """
 Optimizer functions
 """
@@ -236,15 +307,42 @@ def get_optimizer(model_params:Iterable[Parameter], params:dict) -> torch.optim.
 """
 Loss functions
 """
-def get_cross_entropy_loss(params:dict) -> torch.nn.CrossEntropyLoss:
-    return torch.nn.CrossEntropyLoss()
+def get_cross_entropy_loss(params:dict, device) -> torch.nn.CrossEntropyLoss:
+    weight = params['weight']
+    if params['weight'] is not None:
+        weight = torch.tensor(weight, dtype=torch.float).to(device)
+
+    reduction = params['reduction'] if params['reduction'] is not None else 'mean'
+    label_smoothing = params['label_smoothing'] if params['label_smoothing'] is not None else 0.0
+
+    return torch.nn.CrossEntropyLoss(
+        weight=weight,
+        reduction=reduction,
+        label_smoothing=label_smoothing
+    )
+
+
+def get_focal_loss(params:dict, device):
+    gamma = params['gamma'] if params['gamma'] is not None else 2.0
+    alpha = params['alpha'] if params['alpha'] is not None else None
+    reduction = params['reduction'] if params['reduction'] is not None else 'mean'
+    weight = params['weight']
+
+    return FocalLoss(
+        to_onehot_y=True,
+        gamma=gamma,
+        alpha=alpha,
+        reduction=reduction,
+        weight=weight
+    )
 
 
 loss_functions ={
-    'cross_entropy': get_cross_entropy_loss,
+    'cross_entropy_loss': get_cross_entropy_loss,
+    'focal_loss': get_focal_loss,
 }
 
-def get_loss(params:dict) -> torch.nn.Module:
+def get_loss(params:dict, device) -> torch.nn.Module:
     """
     Create a loss function based on the provided parameters.
     """
@@ -254,5 +352,78 @@ def get_loss(params:dict) -> torch.nn.Module:
     
     loss_function = loss_functions[loss_name]
     
-    return loss_function(params)
+    return loss_function(params, device)
 
+
+
+
+"""
+Networks
+"""
+resnets = [
+    'resnet10',
+    'resnet18',
+    'resnet34',
+    'resnet50',
+    'resnet101',
+    'resnet10p',
+    'resnet18p',
+    'resnet34p',
+    'resnet50p',
+    'resnet101p'
+]
+densenets = [
+    'densenet121',
+    'densenet169',
+    'densenet201'
+]
+efficientnets = [
+    'efficientnet-b0',
+    'efficientnet-b1',
+    'efficientnet-b2',
+    'efficientnet-b3',
+    'efficientnet-b4',
+    'efficientnet-b5',
+    'efficientnet-b6',
+    'efficientnet-b7',
+    'efficientnet-b8'
+]
+
+
+def get_network(params:dict):
+    model_name = params['name']
+    if model_name in resnets:
+        return get_resnet_model(params)
+    if model_name in densenets:
+        return get_densenet_model(params)
+    if model_name in efficientnets:
+        return get_efficientnet_model(params)
+    return None
+
+
+
+"""
+Scheduler
+"""
+def get_reduce_lr_on_plateau(params:dict, optimizer:torch.optim) -> torch.optim.lr_scheduler:
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        factor=params['factor'],
+        patience=params['patience'],
+        min_lr=params['min_lr']
+    )
+    
+
+schedulers = {
+   'ReduceLROnPlateau' : get_reduce_lr_on_plateau
+}
+
+def get_scheduler(params:dict, optimizer:torch.optim):
+    scheduler_name = params['name']
+    if scheduler_name not in schedulers:
+        raise ValueError(f"Scheduler type '{scheduler_name}' is not supported.")
+    
+    scheduler = schedulers[scheduler_name]
+    
+    return scheduler(params, optimizer)

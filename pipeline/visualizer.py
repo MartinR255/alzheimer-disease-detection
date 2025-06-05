@@ -29,6 +29,8 @@ class Dashboard:
     def _load_image(self, file_path):
         mri_image = ants.image_read(file_path).numpy()
         mri_image = np.expand_dims(mri_image, axis=0)
+
+        print(mri_image.shape)
         return mri_image
         
 
@@ -43,8 +45,11 @@ class Dashboard:
         guided_gradcam_image = self._normalize(self._load_image(guided_gradcam_file_path))
         
         occlusion_image = self._load_image(occlusion_attr_file_path)
-        occlusion_image = np.clip(occlusion_image, a_min=0, a_max=None)
+        abs_max = np.max(np.abs(occlusion_image)) 
+        occlusion_image = np.abs(occlusion_image) / abs_max
+        # occlusion_image = np.clip(occlusion_image, a_min=0, a_max=None)
         occlusion_image = self._normalize(occlusion_image)
+        # occlusion_image = np.clip(occlusion_image, a_min=0, a_max=None)
 
         # rotate for correct visualization
         mri_image = np.rot90(mri_image, k=1, axes=(3, 2))
@@ -118,7 +123,7 @@ class Dashboard:
         return overlay_image
 
 
-    def _normalize(self, image):
+    def _normalize(self, image, max = None):
         """
         Normalizes data and scales intensity to range [0, 1]
         """
@@ -129,7 +134,10 @@ class Dashboard:
         normalize_transform = Normalize(mean=mean, std=std)
         normalized_image = normalize_transform(tensor_image)
 
-        scaler = ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16)
+        if max is not None:
+            scaler = ScaleIntensity(minv=-max, maxv=max, dtype=torch.float16)
+        else:
+            scaler = ScaleIntensity(minv=0, maxv=1.0, dtype=torch.float16)
         scaled_image = scaler(normalized_image)
 
         scaled_image = scaled_image.unsqueeze(0)
@@ -155,9 +163,9 @@ class Dashboard:
         self._images = [mri_image, grad_cam_image, guided_gradcam_image, occlusion_image]
 
         self._init_mri_slices_grayscale(mri_image, 0, init_slices)
-        self._init_mri_slices_grayscale(grad_cam_image, 1, init_slices)
-        self._init_mri_slices_grayscale(guided_gradcam_image, 2, init_slices)
-        self._init_mri_slices_grayscale(occlusion_image, 3, init_slices)
+        self._init_mri_slices_grayscale(grad_cam_image, 1, init_slices, add_colorbar=True)
+        self._init_mri_slices_grayscale(guided_gradcam_image, 3, init_slices)
+        self._init_mri_slices_grayscale(occlusion_image, 2, init_slices)
         
         self._init_sliders(mri_image.shape, init_slices)
         for slider, update_func in zip(self._sliders, self._update_slicers_functions):
@@ -165,10 +173,10 @@ class Dashboard:
         plt.show()
 
 
-    def _init_mri_slices_grayscale(self, image, row, init_slices):
+    def _init_mri_slices_grayscale(self, image, row, init_slices, add_colorbar=False):
         init_axial, init_coronal, init_sagittal = init_slices
 
-        axial_im = self._axes[row][0].imshow(image[init_axial, :, :], cmap='gray')     
+        axial_im = self._axes[row][0].imshow(image[init_axial, :, :], cmap='gray')
         self._axes[row][0].set_title(f'Axial Slice {init_axial}')
         self._axes[row][0].axis('off') 
         
@@ -176,7 +184,12 @@ class Dashboard:
         self._axes[row][1].set_title(f'Coronal Slice {init_coronal}')
         self._axes[row][1].axis('off') 
         
-        sagittal_im = self._axes[row][2].imshow(image[:, :, init_sagittal], cmap='gray')
+        if add_colorbar:
+            sagittal_im = self._axes[row][2].imshow(image[:, :, init_sagittal], cmap='jet')
+            cbar = self._fig.colorbar(sagittal_im, ax=self._axes[row][2], fraction=0.046, pad=0.04)
+            cbar.set_ticks([])  # Remove numbers from the colorbar
+        else:
+            sagittal_im = self._axes[row][2].imshow(image[:, :, init_sagittal], cmap='gray')
         self._axes[row][2].set_title(f'Sagittal Slice {init_sagittal}')
         self._axes[row][2].axis('off')
 
@@ -237,10 +250,10 @@ class Dashboard:
         
 
 def main():
-    mri_file_path = ''
-    gradcam_file_path = '' 
-    guided_gradcam_file_path = ''
-    occlusion_attr_file_path= ''
+    mri_file_path = 'G:/check/I313456/processed.nii.gz'
+    gradcam_file_path = 'G:/check/I313456/gradcam_plus_plus_heatmap.nii.gz' #gradcam_plus_plus_heatmap.nii.gz' 
+    guided_gradcam_file_path = 'G:/check/I313456/guided_gradcam_heatmap.nii.gz'
+    occlusion_attr_file_path= 'G:/check/I313456/occlusion_att.nii.gz'
 
     d = Dashboard()
     d.build_dashboard(

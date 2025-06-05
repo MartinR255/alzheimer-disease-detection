@@ -6,11 +6,26 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import torch
 import torch.nn as nn
 from monai.networks.nets import (
+    resnet10,
     resnet18, 
     resnet34, 
     resnet50, 
     resnet101
 )
+
+def get_pretrained_resnet10(spatial_dims:int, n_input_channels:int, num_classes:int) -> torch.nn.Module:
+    model = resnet10(
+        spatial_dims=spatial_dims, 
+        n_input_channels=n_input_channels, 
+        num_classes=num_classes, 
+        pretrained=True, 
+        feed_forward=False, 
+        shortcut_type='B', 
+        bias_downsample=False
+    )
+    model.fc = nn.Linear(in_features=512, out_features=num_classes, bias=True)
+    return model
+
 
 
 def get_pretrained_resnet18(spatial_dims:int, n_input_channels:int, num_classes:int) -> torch.nn.Module:
@@ -90,17 +105,19 @@ def add_dropout_fc(model:torch.nn.Module, dropout_rate:float) -> None:
     )
     setattr(model, 'fc', new)
 
-
+resnet10p = get_pretrained_resnet10
 resnet18p = get_pretrained_resnet18
 resnet34p = get_pretrained_resnet34
 resnet50p = get_pretrained_resnet50
 resnet101p = get_pretrained_resnet101
 
 resnet_models = {
+    'resnet10': resnet10,
     'resnet18': resnet18,
     'resnet34': resnet34,
     'resnet50': resnet50,
     'resnet101': resnet101,
+    'resnet10p': resnet10p,
     'resnet18p': resnet18p,
     'resnet34p': resnet34p,
     'resnet50p': resnet50p,
@@ -125,10 +142,10 @@ def get_resnet_model(params:dict) -> torch.nn.Module:
         num_classes=params['num_classes']
     )
     
-    if pd.isna(params['dropout_rate_relu']) is False:
+    if params['dropout_rate_relu'] is not None:
         add_dropout_relu(model, params['dropout_rate_relu'])
 
-    if pd.isna(params['dropout_rate_fc']) is False:
+    if params['dropout_rate_fc'] is not None:
         add_dropout_fc(model, params['dropout_rate_fc'])
 
     return model

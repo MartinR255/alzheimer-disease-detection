@@ -2,6 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 
+from utils import make_file_dir
+
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import torch
@@ -24,12 +26,16 @@ class Report:
         self._metrics = {}
 
 
-    def _create_metrics(self):
+    def number_of_classes(self):
+        return self._num_classes
+
+
+    def _create_metrics(self, average:list):
         """
         Create evaluation metrics for multiclass classification.
         
         Args:
-            None
+            average (list): List of average type for each metric in order accuracy, precision, recall, f1_score, auroc
             
         Returns:
             dict: Dictionary containing initialized metrics:
@@ -39,27 +45,34 @@ class Report:
                 - 'f1_score': MulticlassF1Score
                 - 'auroc': MulticlassAUROC
         """
-        accuracy = MulticlassAccuracy(num_classes=self._num_classes, average='micro')
-        precision = MulticlassPrecision(num_classes=self._num_classes, average='macro')
-        recall = MulticlassRecall(num_classes=self._num_classes, average='macro')
-        f1_score = MulticlassF1Score(num_classes=self._num_classes, average='macro')
-        auroc = MulticlassAUROC(num_classes=self._num_classes, average='macro')
+        accuracy_avg_type, precision_avg_type, recall_avg_type, f1_score_avg_type, auroc_avg_type = average
+
+        accuracy = MulticlassAccuracy(num_classes=self._num_classes, average=accuracy_avg_type)
+        precision = MulticlassPrecision(num_classes=self._num_classes, average=precision_avg_type)
+        recall = MulticlassRecall(num_classes=self._num_classes, average=recall_avg_type)
+        f1_score = MulticlassF1Score(num_classes=self._num_classes, average=f1_score_avg_type)
+        auroc = MulticlassAUROC(num_classes=self._num_classes, average=auroc_avg_type)
 
         return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1_score': f1_score, 'auroc': auroc}
 
 
-    def init_metrics(self, group_name: str):
+    def init_metrics(self, group_name: str, average:list = ['micro', 'macro', 'macro', 'macro','macro']):
         """
         Initialize metrics objects.
         MulticlassAccuracy, MulticlassPrecision, MulticlassRecall, MulticlassF1Score, MulticlassAUROC
         
         Args:
             group_names (str): Metrics group name.
+            average (list): List of average type for each metric in order accuracy, precision, recall, f1_score, auroc
             
         Returns:
             None
         """
-        self._metrics[group_name] = self._create_metrics()
+
+        if len(average) != 5:
+            raise ValueError(f"Expected list of length 5, but got {len(average)}")
+
+        self._metrics[group_name] = self._create_metrics(average)
 
 
     def update_metrics(self, group_name: str, metric_name: str, predicted_value: torch.Tensor, ground_truth: torch.Tensor) -> None:
@@ -92,7 +105,12 @@ class Report:
         """
         computations = {}
         for metric_name, metric in self._metrics[group_name].items():
-            computations[metric_name] = metric.compute().item()
+            metric_value = metric.compute()
+            if metric_value.numel() == 1:
+                computations[metric_name] = metric_value.item()
+            else:
+                computations[metric_name] = metric_value.tolist()
+            # computations[metric_name] = metric.compute().item()
 
         return computations
 
@@ -147,6 +165,8 @@ class Report:
 
     def save_confusion_matrix(self, predicted_labels, ground_truth_labels, file_name:str):
         file_path = os.sep.join([self._root_path, 'confusion_matrices', file_name]) 
+        make_file_dir(file_path)
+
         conf_matrix = multiclass_confusion_matrix(predicted_labels, ground_truth_labels, self._num_classes)
         conf_matrix_array = conf_matrix.cpu().numpy()
         np.save(file_path, conf_matrix_array)

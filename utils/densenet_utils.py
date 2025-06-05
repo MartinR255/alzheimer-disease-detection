@@ -29,5 +29,6 @@ def get_densenet_model(params:dict) -> torch.nn.Module:
     return densenet_models[params['name']](
         spatial_dims=params['spatial_dims'], 
         in_channels=params['n_input_channels'], 
-        out_channels=params['num_classes']
+        out_channels=params['num_classes'],
+        dropout_prob=params['dropout_prob'],
     )

@@ -9,7 +9,7 @@ from report import Report
 
 import monai 
 from monai.data import DataLoader
-
+from utils import make_file_dir
 
 
 class Trainer():
@@ -23,7 +23,8 @@ class Trainer():
         validation_interval:int,
         device:torch.device,
         save_model_path:str,
-        report: Report     
+        report: Report,
+        scheduler: torch.optim.lr_scheduler   
     ) -> None: 
         self._model = model
         self._optimizer = optimizer
@@ -34,6 +35,7 @@ class Trainer():
         self._device = device
         self._save_model_path = save_model_path
         self._report = report
+        self._scheduler = scheduler
 
         self._report.init_metrics('train')
         self._report.init_metrics('validation')
@@ -58,7 +60,7 @@ class Trainer():
             self._scaler.scale(loss).backward() 
             self._scaler.step(self._optimizer)
             self._scaler.update()
-
+            
             model_out_argmax = model_out.argmax(dim=1)
             self._report.update_metrics('train', 'accuracy', model_out_argmax, labels)
             self._report.update_metrics('train', 'precision', model_out_argmax, labels)
@@ -106,6 +108,9 @@ class Trainer():
                     epoch_loss += loss.item()
 
             epoch_loss /= step
+
+            if self._scheduler is not None:
+                self._scheduler.step(epoch_loss)
 
             metrics_values = self._report.compute_metrics('validation')
             self._report.add_row('Validation_Results', [
@@ -163,6 +168,10 @@ class Trainer():
             'epoch': epoch_val,
             'best_metric': best_metric
         }
+
+        model_path = os.sep.join([self._save_model_path, f'{self._run_id}_{epoch_val}.pth'])
+        make_file_dir(model_path)
+
         torch.save(
             checkpoint, 
             os.sep.join([self._save_model_path, f'{self._run_id}_{epoch_val}.pth'])

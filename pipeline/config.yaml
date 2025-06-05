@@ -1,7 +1,5 @@
-raw_mri_root_folder_path: "C:/Users/ropja/Downloads/data"
-output_root_folder_path: "G:/eval_logs"
-mni_template_path: "C:/Users/ropja/Desktop/bachelor-thesis/pipeline/mni_icbm152_nl_VI_nifti/icbm_avg_152_t1_tal_nlin_symmetric_VI_skull_stripped.nii"
-model_path: "G:/728234_5.pth"
-
-save_nifti_format: false
+raw_mri_root_folder_path: ""
+output_root_folder_path: ""
+mni_template_path: ""
+model_config_path: ""
 save_brain_mask: true
